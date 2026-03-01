@@ -1,0 +1,414 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+@font-face {
+    font-family: 'DS-Digital';
+    src: url('ds-digital.woff') format('woff');
+    font-display: swap;
+}
+
+/* hide modal completely */
+.modal {
+    display: none !important;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #000000;
+    overflow: hidden;
+    color: #e0e0e0;
+}
+
+#canvas-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+#projects-sidebar {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 30;
+    width: 240px;
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    backdrop-filter: blur(6px);
+    padding: 10px 12px;
+}
+
+.dropdown-toggle {
+    width: 100%;
+    text-align: left;
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
+    padding: 8px 10px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.dropdown-toggle:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.dropdown-menu {
+    margin-top: 10px;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dropdown-menu.open {
+    display: flex;
+}
+
+.project-item {
+    width: 100%;
+    text-align: left;
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 8px 10px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.project-item:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+#time-widget {
+    position: fixed;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 35;
+    display: flex;
+    gap: 14px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(6px);
+}
+
+.time-card {
+    min-width: 220px;
+    text-align: center;
+}
+
+.time-label {
+    font-size: 12px;
+    color: #d9d9d9;
+    font-family: inherit;
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+}
+
+.time-digits {
+    font-family: 'DS-Digital', "Courier New", "Lucida Console", monospace;
+    font-size: 34px;
+    line-height: 1;
+    color: #ffffff;
+    letter-spacing: 2px;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 8px rgba(120, 200, 255, 0.4);
+}
+
+.time-date {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #c7c7c7;
+    font-family: inherit;
+    letter-spacing: 0.5px;
+}
+
+#info-panel {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: transparent;
+    padding: 10px 0;
+    border-radius: 0;
+    border: none;
+    backdrop-filter: none;
+    max-width: 100%;
+    box-shadow: none;
+    z-index: 10;
+    text-align: center;
+}
+
+#info-panel h1 {
+    font-size: 14px;
+    margin-bottom: 5px;
+    color: #ffffff;
+    text-shadow: none;
+    font-weight: normal;
+    letter-spacing: 1px;
+}
+
+#info-panel p {
+    font-size: 11px;
+    margin-bottom: 5px;
+    color: #ffffff;
+    line-height: 1.4;
+    display: none;
+}
+
+#info-panel p[style*="12px"] {
+    display: block;
+}
+
+#details {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+    font-size: 14px;
+    color: #ffffff;
+    display: none;
+    z-index: 20;
+}
+
+
+#instructions { display: none; }
+
+
+#instructions p {
+    margin-bottom: 8px;
+    color: #b0b0b0;
+}
+
+#instructions strong {
+    color: #64c8ff;
+}
+
+.interactive-label {
+    position: fixed;
+    background: rgba(100, 150, 255, 0.9);
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 5;
+}
+
+canvas {
+    display: block;
+}
+
+#pokeball-link-popup,
+#sas-link-popup {
+    position: fixed;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 8px;
+    padding: 8px 10px;
+    z-index: 20;
+    transform: translateY(-50%);
+}
+
+#pokeball-link-label {
+    color: #ffffff;
+    font-size: 14px;
+    text-decoration: none;
+    white-space: nowrap;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+#pokeball-link-label:hover {
+    text-decoration: underline;
+}
+
+#pokeball-popup-close,
+#sas-popup-close {
+    width: 18px;
+    height: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 50%;
+    background: transparent;
+    color: #ffffff;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+}
+
+#sas-links-toggle {
+    min-width: 180px;
+    text-align: left;
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 6px;
+    padding: 6px 8px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+#sas-links-toggle:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+#sas-links-list {
+    margin-top: 8px;
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+}
+
+#sas-links-list.open {
+    display: flex;
+}
+
+.sas-link-item {
+    color: #ffffff;
+    text-decoration: none;
+    font-size: 13px;
+    padding: 3px 0;
+}
+
+.sas-link-item:hover {
+    text-decoration: underline;
+}
+
+/* ensure Sketchfab iframe fills the canvas container */
+#canvas-container .sketchfab-embed-wrapper {
+    width: 100%;
+    height: 100%;
+}
+
+#canvas-container .sketchfab-embed-wrapper iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+/* previous pokeball image styling removed; now using 3D object */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-content {
+    background: rgba(20, 30, 60, 0.95);
+    border: 2px solid rgba(100, 200, 255, 0.5);
+    border-radius: 15px;
+    padding: 35px;
+    max-width: 400px;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(10px);
+    position: absolute;
+    transition: all 0.05s ease-out;
+}
+
+.modal-close {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+    background: none;
+    border: none;
+    color: #64c8ff;
+    font-size: 28px;
+    cursor: pointer;
+    transition: color 0.3s;
+}
+
+.modal-close:hover {
+    color: #fff;
+}
+
+#modal-title {
+    color: #64c8ff;
+    margin-bottom: 15px;
+    font-size: 22px;
+    text-shadow: 0 0 10px rgba(100, 200, 255, 0.5);
+}
+
+#modal-body {
+    color: #b0b0b0;
+    margin-bottom: 20px;
+    line-height: 1.6;
+    font-size: 14px;
+}
+
+.modal-button {
+    display: inline-block;
+    background: linear-gradient(deg, #64c8ff 0%, #4a9fd8 100%);
+    color: white;
+    padding: 12px 30px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: bold;
+    transition: all 0.3s;
+    cursor: pointer;
+    border: none;
+}
+
+.modal-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(100, 200, 255, 0.4);
+}
+
+@media (max-width: 700px) {
+    #projects-sidebar {
+        width: calc(100% - 24px);
+        left: 12px;
+        top: 12px;
+    }
+
+    #pokeball-link-popup {
+        max-width: calc(100% - 24px);
+    }
+
+    #pokeball-link-label {
+        font-size: 12px;
+        white-space: normal;
+    }
+
+    #time-widget {
+        width: calc(100% - 24px);
+        left: 12px;
+        transform: none;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    .time-card {
+        min-width: 0;
+        flex: 1;
+    }
+
+    .time-digits {
+        font-size: 24px;
+        letter-spacing: 1px;
+    }
+}

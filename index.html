@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mitchell Li</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <aside id="projects-sidebar">
+        <button id="projects-dropdown-toggle" class="dropdown-toggle" type="button" aria-expanded="false">
+            Projects
+        </button>
+        <div id="projects-dropdown-menu" class="dropdown-menu">
+            <button class="project-item" data-project="home">Home</button>
+            <button class="project-item" data-project="cobblemon-more-cosmetics">CobblemonMoreCosmetics</button>
+            <button class="project-item" data-project="sas">SAS</button>
+        </div>
+    </aside>
+    
+    <div id="info-panel">
+        <h1>Mitchell Li</h1>
+        <p style="font-size: 12px; color: #64c8ff; margin-bottom: 15px;">mli0806.dev</p>
+        <p id="info-text">Rotate and zoom to view the 3D Pokéball below; click it to show the Modrinth link</p>
+        <div id="details"></div>
+    </div>
+
+    <div id="time-widget">
+        <div class="time-card">
+            <div class="time-label">Singapore</div>
+            <div id="sg-time" class="time-digits">00:00:00</div>
+            <div id="sg-date" class="time-date">0000-00-00</div>
+        </div>
+        <div class="time-card">
+            <div class="time-label">Tokyo</div>
+            <div id="tokyo-time" class="time-digits">00:00:00</div>
+            <div id="tokyo-date" class="time-date">0000-00-00</div>
+        </div>
+    </div>
+
+
+
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls for camera navigation (jsdelivr hosts examples) -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
