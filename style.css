@@ -434,7 +434,6 @@ body {
 }
 
 #ship-crash-title {
-    font-family: 'DS-Digital', "Courier New", "Lucida Console", monospace;
     font-size: 72px;
     line-height: 1;
     letter-spacing: 2px;
@@ -742,6 +741,19 @@ canvas {
     box-shadow: 0 5px 15px rgba(100, 200, 255, 0.4);
 }
 
+#credits-sidebar {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;     
+    z-index: 30;
+    width: 240px;
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    backdrop-filter: blur(6px);
+    padding: 10px 12px;
+}
+
 @media (max-width: 700px) {
     #projects-sidebar {
         width: calc(100% - 24px);
@@ -788,4 +800,5 @@ canvas {
         text-align: center;
         padding: 0 12px;
     }
+
 }

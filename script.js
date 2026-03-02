@@ -39,7 +39,7 @@ let sasCube = null;
 let spaceStationPivot = null;
 let spaceStation = null;
 let spaceShip = null;
-let enemyDreadnought = null;
+let enemyThetaClassI = null;
 let shipEngineLight = null;
 let shipEngineGlowMaterial = null;
 let shipControlActive = false;
@@ -107,6 +107,8 @@ const singaporeDateEl = document.getElementById('sg-date');
 const tokyoDateEl = document.getElementById('tokyo-date');
 const projectsDropdownToggle = document.getElementById('projects-dropdown-toggle');
 const projectsDropdownMenu = document.getElementById('projects-dropdown-menu');
+const creditsToggle = document.getElementById("credits-dropdown-toggle");
+const creditsMenu = document.getElementById("credits-dropdown-menu");
 const todoDropdownToggle = document.getElementById('todo-dropdown-toggle');
 const todoDropdownMenu = document.getElementById('todo-dropdown-menu');
 const todoSectionsListEl = document.getElementById('todo-sections-list');
@@ -367,7 +369,9 @@ const sasLinks = [
     { title: 'Gmail', url: 'https://mail.google.com/mail/u/0/#inbox' },
     { title: 'Powerschool', url: 'https://powerschool.sas.edu.sg/public/home.html' },
     { title: 'Khan Academy', url: 'https://www.khanacademy.org/' },
-    { title: 'MIT OCW', url: 'https://ocw.mit.edu/' }
+    { title: 'MIT OCW', url: 'https://ocw.mit.edu/' },
+    { title: 'QB Reader', url: 'https://www.qbreader.org/' },
+    { title: 'Grokipedia', url: 'https://www.grokipedia.com/' }
 ];
 
 sasLinks.forEach((link) => {
@@ -497,10 +501,10 @@ const shipCrashOverlay = document.createElement('div');
 shipCrashOverlay.id = 'ship-crash-overlay';
 const shipCrashTitle = document.createElement('div');
 shipCrashTitle.id = 'ship-crash-title';
-shipCrashTitle.textContent = 'YOU CRASHED';
+shipCrashTitle.textContent = 'You crashed';
 const shipCrashSubtitle = document.createElement('div');
 shipCrashSubtitle.id = 'ship-crash-subtitle';
-shipCrashSubtitle.textContent = 'Your ship impacted an object.';
+shipCrashSubtitle.textContent = 'RIP Bozo';
 const shipCrashRespawnButton = document.createElement('button');
 shipCrashRespawnButton.id = 'ship-crash-respawn';
 shipCrashRespawnButton.type = 'button';
@@ -541,6 +545,11 @@ todoDropdownToggle.addEventListener('click', (e) => {
     projectsDropdownToggle.setAttribute('aria-expanded', 'false');
     const isOpen = todoDropdownMenu.classList.toggle('open');
     todoDropdownToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+});
+
+creditsToggle.addEventListener("click", () => {
+    const open = creditsMenu.classList.toggle("open");
+    creditsToggle.setAttribute("aria-expanded", open);
 });
 
 function saveTodoSections() {
@@ -1248,9 +1257,9 @@ function createSpaceflightSimDisplay() {
     spaceStationPivot.add(orbitRing);
 }
 
-function createEnemyDreadnought() {
-    enemyDreadnought = new THREE.Group();
-    enemyDreadnought.name = 'Enemy Dreadnought';
+function createEnemyThetaClassI() {
+    enemyThetaClassI = new THREE.Group();
+    enemyThetaClassI.name = 'Enemy ThetaClassI';
 
     const hullMaterial = new THREE.MeshStandardMaterial({ color: 0x6a707d, roughness: 0.42, metalness: 0.76 });
     const armorMaterial = new THREE.MeshStandardMaterial({ color: 0x3d4452, roughness: 0.55, metalness: 0.64 });
@@ -1271,66 +1280,66 @@ function createEnemyDreadnought() {
 
     const hull = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 2.4, 20), hullMaterial);
     hull.rotation.z = Math.PI / 2;
-    enemyDreadnought.add(hull);
+    enemyThetaClassI.add(hull);
     const hullFrontCap = new THREE.Mesh(new THREE.SphereGeometry(0.45, 18, 14), hullMaterial);
     hullFrontCap.position.x = 1.2;
-    enemyDreadnought.add(hullFrontCap);
+    enemyThetaClassI.add(hullFrontCap);
     const hullRearCap = hullFrontCap.clone();
     hullRearCap.position.x = -1.2;
-    enemyDreadnought.add(hullRearCap);
+    enemyThetaClassI.add(hullRearCap);
 
     const spine = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.24, 0.24), armorMaterial);
     spine.position.y = 0.2;
-    enemyDreadnought.add(spine);
+    enemyThetaClassI.add(spine);
 
     const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.22, 0.34), hullMaterial);
     bridge.position.set(0.74, 0.42, 0);
-    enemyDreadnought.add(bridge);
+    enemyThetaClassI.add(bridge);
 
     const nose = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.62, 12), armorMaterial);
     nose.position.x = 1.48;
     nose.rotation.z = -Math.PI / 2;
-    enemyDreadnought.add(nose);
+    enemyThetaClassI.add(nose);
 
     const engineBlock = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.42, 0.54), armorMaterial);
     engineBlock.position.x = -1.36;
-    enemyDreadnought.add(engineBlock);
+    enemyThetaClassI.add(engineBlock);
 
     [-0.19, 0, 0.19].forEach((zPos) => {
         const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.22, 14), armorMaterial);
         nozzle.position.set(-1.64, -0.03, zPos);
         nozzle.rotation.z = Math.PI / 2;
-        enemyDreadnought.add(nozzle);
+        enemyThetaClassI.add(nozzle);
 
         const plume = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 10), lightMaterial);
         plume.position.set(-1.76, -0.03, zPos);
-        enemyDreadnought.add(plume);
+        enemyThetaClassI.add(plume);
     });
 
     [-0.72, 0.72].forEach((zPos) => {
         const wing = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.06, 0.36), armorMaterial);
         wing.position.set(0.02, 0, zPos);
-        enemyDreadnought.add(wing);
+        enemyThetaClassI.add(wing);
 
         const wingPanel = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.028, 0.26), panelMaterial);
         wingPanel.position.set(0.02, 0.04, zPos);
-        enemyDreadnought.add(wingPanel);
+        enemyThetaClassI.add(wingPanel);
     });
 
     [0.2, 0.65, 1.1].forEach((xPos) => {
         const turretBase = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.08, 0.06, 12), armorMaterial);
         turretBase.position.set(xPos, 0.3, 0);
-        enemyDreadnought.add(turretBase);
+        enemyThetaClassI.add(turretBase);
 
         const turretBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.24, 10), armorMaterial);
         turretBarrel.position.set(xPos + 0.13, 0.3, 0);
         turretBarrel.rotation.z = Math.PI / 2;
-        enemyDreadnought.add(turretBarrel);
+        enemyThetaClassI.add(turretBarrel);
     });
 
-    enemyDreadnought.scale.setScalar(0.9);
-    enemyDreadnought.visible = false;
-    scene.add(enemyDreadnought);
+    enemyThetaClassI.scale.setScalar(0.9);
+    enemyThetaClassI.visible = false;
+    scene.add(enemyThetaClassI);
 }
 
 function getRandomEnemyPathPoint(target) {
@@ -1354,12 +1363,12 @@ function getRandomEnemyPathPoint(target) {
 
 function setEnemyEncounterActive(active) {
     enemyEncounterActive = active;
-    if (!enemyDreadnought) {
+    if (!enemyThetaClassI) {
         return;
     }
 
     if (!active || !enemyAlive) {
-        enemyDreadnought.visible = false;
+        enemyThetaClassI.visible = false;
         enemyPathTarget.set(0, 0, 0);
         for (let i = missiles.length - 1; i >= 0; i -= 1) {
             scene.remove(missiles[i].mesh);
@@ -1379,38 +1388,38 @@ function setEnemyEncounterActive(active) {
         return;
     }
 
-    enemyDreadnought.visible = true;
+    enemyThetaClassI.visible = true;
     if (enemyPathTarget.lengthSq() === 0) {
         getRandomEnemyPathPoint(enemyOrbitPos);
-        enemyDreadnought.position.copy(enemyOrbitPos);
+        enemyThetaClassI.position.copy(enemyOrbitPos);
         getRandomEnemyPathPoint(enemyPathTarget);
     }
 }
 
-function updateEnemyDreadnought(dt) {
-    if (!enemyDreadnought || !enemyAlive || !homeSphere || !enemyEncounterActive) {
+function updateEnemyThetaClassI(dt) {
+    if (!enemyThetaClassI || !enemyAlive || !homeSphere || !enemyEncounterActive) {
         return;
     }
     if (enemyPathTarget.lengthSq() === 0) {
         getRandomEnemyPathPoint(enemyPathTarget);
     }
 
-    enemyOrbitPos.copy(enemyPathTarget).sub(enemyDreadnought.position);
+    enemyOrbitPos.copy(enemyPathTarget).sub(enemyThetaClassI.position);
     const distanceToTarget = enemyOrbitPos.length();
     if (distanceToTarget <= enemyNavState.arrivalThreshold) {
         getRandomEnemyPathPoint(enemyPathTarget);
-        enemyOrbitPos.copy(enemyPathTarget).sub(enemyDreadnought.position);
+        enemyOrbitPos.copy(enemyPathTarget).sub(enemyThetaClassI.position);
     }
 
     const moveDistance = Math.min(enemyNavState.speed * dt, enemyOrbitPos.length());
     if (moveDistance > 0) {
         enemyOrbitPos.normalize();
-        enemyDreadnought.position.addScaledVector(enemyOrbitPos, moveDistance);
-        enemyOrbitLookPos.copy(enemyDreadnought.position).addScaledVector(enemyOrbitPos, 1.2);
+        enemyThetaClassI.position.addScaledVector(enemyOrbitPos, moveDistance);
+        enemyOrbitLookPos.copy(enemyThetaClassI.position).addScaledVector(enemyOrbitPos, 1.2);
     } else {
         enemyOrbitLookPos.copy(enemyPathTarget);
     }
-    enemyDreadnought.lookAt(enemyOrbitLookPos);
+    enemyThetaClassI.lookAt(enemyOrbitLookPos);
 }
 
 function updateEnemyHealthUI() {
@@ -1421,12 +1430,12 @@ function updateEnemyHealthUI() {
         enemyHealthUI.style.display = 'none';
         return;
     }
-    if (!enemyDreadnought || !spaceShip) {
+    if (!enemyThetaClassI || !spaceShip) {
         enemyHealthUI.style.display = 'none';
         return;
     }
 
-    enemyDreadnought.getWorldPosition(enemyOrbitPos);
+    enemyThetaClassI.getWorldPosition(enemyOrbitPos);
     spaceShip.getWorldPosition(shipWorldPos);
     enemyToShipDelta.subVectors(enemyOrbitPos, shipWorldPos);
     if (enemyToShipDelta.lengthSq() > enemyHealthUIRange * enemyHealthUIRange) {
@@ -1559,8 +1568,8 @@ function updateMissiles(dt) {
         return;
     }
 
-    if (enemyDreadnought && enemyAlive && enemyEncounterActive) {
-        enemyDreadnought.getWorldPosition(enemyOrbitPos);
+    if (enemyThetaClassI && enemyAlive && enemyEncounterActive) {
+        enemyThetaClassI.getWorldPosition(enemyOrbitPos);
     }
 
     for (let i = missiles.length - 1; i >= 0; i -= 1) {
@@ -1574,7 +1583,7 @@ function updateMissiles(dt) {
             continue;
         }
 
-        if (!enemyAlive || !enemyDreadnought || !enemyEncounterActive) {
+        if (!enemyAlive || !enemyThetaClassI || !enemyEncounterActive) {
             continue;
         }
 
@@ -1588,7 +1597,7 @@ function updateMissiles(dt) {
 
             if (enemyHealth <= 0) {
                 enemyAlive = false;
-                enemyDreadnought.visible = false;
+                enemyThetaClassI.visible = false;
                 enemyEncounterActive = false;
                 spawnExplosion(enemyOrbitPos, 0xff9954, 2.2);
             }
@@ -1597,14 +1606,14 @@ function updateMissiles(dt) {
 }
 
 function fireEnemyProjectile() {
-    if (!enemyAlive || !enemyEncounterActive || !enemyDreadnought || !spaceShip || shipDocked || shipCrashed) {
+    if (!enemyAlive || !enemyEncounterActive || !enemyThetaClassI || !spaceShip || shipDocked || shipCrashed) {
         return;
     }
     if (enemyFireCooldownTimer > 0) {
         return;
     }
 
-    enemyDreadnought.getWorldPosition(enemyOrbitPos);
+    enemyThetaClassI.getWorldPosition(enemyOrbitPos);
     spaceShip.getWorldPosition(shipWorldPos);
     enemyToShipDelta.subVectors(shipWorldPos, enemyOrbitPos);
     if (enemyToShipDelta.lengthSq() > enemyFireRange * enemyFireRange) {
@@ -1806,7 +1815,7 @@ function checkShipCollisionAlongPath(startWorld, endWorld) {
         { object: pokeball, grace: false },
         { object: sasCube, grace: false },
         { object: spaceStation, grace: true },
-        { object: enemyAlive && enemyEncounterActive ? enemyDreadnought : null, grace: false }
+        { object: enemyAlive && enemyEncounterActive ? enemyThetaClassI : null, grace: false }
     ];
 
     scene.updateMatrixWorld(true);
@@ -2342,7 +2351,7 @@ createHomeSphere();
 createPokeball();
 createSASCube();
 createSpaceflightSimDisplay();
-createEnemyDreadnought();
+createEnemyThetaClassI();
 createOrbitPaths();
 updateOrbitPositions(0);
 
@@ -2519,7 +2528,7 @@ document.addEventListener('click', (e) => {
         sasLinksList.classList.remove('open');
     }
 
-    if (e.target.closest('#pokeball-link-popup, #sas-link-popup, #projects-sidebar, #todo-sidebar, #info-panel, #time-widget')) {
+    if (e.target.closest('#pokeball-link-popup, #sas-link-popup, #projects-sidebar, #todo-sidebar, #info-panel, #time-widget, #credits')) {
         return;
     }
     if (shipControlActive || trackedObject) {
@@ -2766,7 +2775,7 @@ function updateSpaceflightSim(dt) {
     sasCube.getWorldPosition(spaceStationTargetPos);
     spaceStation.lookAt(spaceStationTargetPos);
     spaceStation.rotateY(Math.PI / 2);
-    updateEnemyDreadnought(dt);
+    updateEnemyThetaClassI(dt);
     updateSpaceShipControl(dt);
     if (shipControlActive && missileTriggerHeld) {
         fireShipMissile();
