@@ -33,10 +33,20 @@ textureLoader.load('skybox.jpg', tex => {
 // objects array kept for interaction
 const objects = [];
 let homeSphere = null;
-let homeCorona = null;
+let sunGlowLayer = null;
 let pokeball = null;
 let sasCube = null;
+let spaceStationPivot = null;
+let spaceStation = null;
+let spaceShip = null;
+let shipEngineLight = null;
+let shipEngineGlowMaterial = null;
+let shipControlActive = false;
+let shipDocked = true;
+let shipAutoDockActive = false;
+const earthCloudLayers = [];
 let earthTiltGroup = null;
+let orbitPathGroup = null;
 let showPokeballLink = false;
 let showSASLink = false;
 const pokeballScreenPos = new THREE.Vector3();
@@ -49,6 +59,34 @@ const trackedCameraPos = new THREE.Vector3();
 let trackedObject = null;
 let trackedDistance = 8;
 let trackedHeightOffset = 1.2;
+const shipControlState = {
+    KeyW: false,
+    KeyS: false,
+    KeyA: false,
+    KeyD: false,
+    Space: false,
+    ShiftLeft: false
+};
+const shipVelocity = new THREE.Vector3();
+const shipForwardAxis = new THREE.Vector3(0, 0, -1);
+const shipUpAxis = new THREE.Vector3(0, 1, 0);
+const shipWorldPos = new THREE.Vector3();
+const shipWorldQuat = new THREE.Quaternion();
+const shipParentWorldQuat = new THREE.Quaternion();
+const shipTargetWorldQuat = new THREE.Quaternion();
+const shipTargetLocalQuat = new THREE.Quaternion();
+const shipForwardWorld = new THREE.Vector3();
+const shipUpWorld = new THREE.Vector3();
+const shipCameraDesiredPos = new THREE.Vector3();
+const shipCameraLookTarget = new THREE.Vector3();
+const shipDockWorldPos = new THREE.Vector3();
+const shipDockLocalPos = new THREE.Vector3();
+const shipDockOffset = new THREE.Vector3(0, 0.04, -0.2);
+const shipOrbitVelocityLocal = new THREE.Vector3();
+const shipOrbitVelocityTiltLocal = new THREE.Vector3();
+const shipOrbitVelocityWorld = new THREE.Vector3();
+let shipThrottleLevel = 0;
+let shipThrottleCommand = 0;
 const freecamMoveState = {
     KeyW: false,
     KeyA: false,
@@ -67,6 +105,13 @@ const singaporeDateEl = document.getElementById('sg-date');
 const tokyoDateEl = document.getElementById('tokyo-date');
 const projectsDropdownToggle = document.getElementById('projects-dropdown-toggle');
 const projectsDropdownMenu = document.getElementById('projects-dropdown-menu');
+const todoDropdownToggle = document.getElementById('todo-dropdown-toggle');
+const todoDropdownMenu = document.getElementById('todo-dropdown-menu');
+const todoSectionsListEl = document.getElementById('todo-sections-list');
+const todoSectionInput = document.getElementById('todo-section-input');
+const todoSectionAddButton = document.getElementById('todo-section-add');
+const todoStorageKey = 'mli0806.todoSections';
+let todoSections = [];
 const cityTimeFormatters = {
     singapore: new Intl.DateTimeFormat('en-GB', {
         timeZone: 'Asia/Singapore',
@@ -97,13 +142,50 @@ const cityTimeFormatters = {
         year: 'numeric'
     })
 };
+const earthClockSyncConfig = {
+    mode: 'reference-image',
+    timeZone: 'Asia/Tokyo',
+    longitudeDeg: 139.6917,
+    // Pacific-centered daylight to match the provided screenshot.
+    referenceSubsolarLongitudeDeg: 160,
+    // Calibrates the Earth texture's visual prime meridian to geographic longitude.
+    textureLongitudeOffsetDeg: 0
+};
+const earthSyncTimePartsFormatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: earthClockSyncConfig.timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+});
 const orbitConfig = {
-    pokeball: { radius: 18.5, speed: 0.24, angle: Math.PI * 0.15, y: 0.0 },
-    sas: { radius: 27.5, speed: -0.15, angle: Math.PI * 1.2, y: 1.4 }
+    pokeball: {
+        semiMajorAxis: 18.5,
+        eccentricity: 0.22,
+        inclinationRad: THREE.MathUtils.degToRad(8),
+        longitudeOfAscendingNodeRad: THREE.MathUtils.degToRad(36),
+        argumentOfPeriapsisRad: THREE.MathUtils.degToRad(118),
+        meanAnomalyRad: Math.PI * 0.2,
+        periodSeconds: 46
+    },
+    sas: {
+        semiMajorAxis: 27.5,
+        eccentricity: 0.0167,
+        inclinationRad: THREE.MathUtils.degToRad(11),
+        longitudeOfAscendingNodeRad: THREE.MathUtils.degToRad(-24),
+        argumentOfPeriapsisRad: THREE.MathUtils.degToRad(103),
+        meanAnomalyAtReferenceRad: 0
+    }
+};
+const orbitPathConfig = {
+    segments: 360,
+    pokeball: { color: 0xff9b2f, opacity: 0.42 },
+    sas: { color: 0x7dc4ff, opacity: 0.48 }
 };
 const earthOrbitConfig = {
-    // Keep Jan 3 (approx perihelion) near +X for a stable yearly reference.
-    perihelionDayOfYear: 3
+    // Earth perihelion reference near +X (UTC), then advance by sidereal-year period.
+    perihelionReferenceUtcMs: Date.UTC(2026, 0, 4, 15, 0, 0),
+    siderealYearDays: 365.256363004
 };
 const earthAxialTiltRad = THREE.MathUtils.degToRad(23.44);
 const planetRotationConfig = {
@@ -113,11 +195,36 @@ const planetRotationConfig = {
 };
 const sunRotationRadPerSecond = (Math.PI * 2) / planetRotationConfig.sunSecondsPerRotation;
 const earthRotationRadPerSecond = -((Math.PI * 2) / planetRotationConfig.earthSecondsPerRotation);
-const sunVisualConfig = {
-    coronaScale: 1.16,
-    coronaPulseAmplitude: 0.018,
-    coronaPulseSpeed: 0.65
-};
+const earthAxialDriftRadPerSecond = THREE.MathUtils.degToRad(1.6);
+const earthCloudLayerSpeedMultipliers = [1.03, 1.12];
+const TWO_PI = Math.PI * 2;
+const spaceflightStationOrbitRadius = 2.1;
+const spaceflightStationOrbitTiltRad = THREE.MathUtils.degToRad(28);
+const spaceflightStationAngularSpeed = TWO_PI / 11;
+const spaceflightOrbitPathColor = 0x8bc4ff;
+const spaceflightOrbitPathOpacity = 0.5;
+const shipRollRateRadPerSecond = THREE.MathUtils.degToRad(110);
+const shipAcceleration = 2.9;
+const shipBoostMultiplier = 1.85;
+const shipDragPerSecond = 0.05;
+const shipBrakeDragPerSecond = 1.9;
+const shipMaxSpeed = 10.5;
+const shipMouseYawSensitivity = 0.0027;
+const shipMousePitchSensitivity = 0.0022;
+const shipThrottleLerpSpeed = 8.5;
+const shipThrottleStep = 0.05;
+const shipThrottleFineStep = 0.01;
+const shipLatchRange = 200;
+const shipAutoDockSpeed = 2.4;
+const shipAutoDockRotateLerp = 0.12;
+const shipCameraBackOffset = 0.34;
+const shipCameraUpOffset = 0.03;
+const shipCameraLookAhead = 1.35;
+const orbitUpAxis = new THREE.Vector3(0, 1, 0);
+const orbitPitchAxis = new THREE.Vector3(1, 0, 0);
+const pokeballOrbitPos = new THREE.Vector3();
+const sasOrbitPos = new THREE.Vector3();
+const spaceStationTargetPos = new THREE.Vector3();
 
 const pokeballLinkPopup = document.createElement('div');
 pokeballLinkPopup.id = 'pokeball-link-popup';
@@ -171,6 +278,44 @@ sasLinkPopup.appendChild(sasLinksToggle);
 sasLinkPopup.appendChild(sasLinksList);
 document.body.appendChild(sasLinkPopup);
 
+const simSpeedometer = document.createElement('div');
+simSpeedometer.id = 'sim-speedometer';
+const simSpeedLabel = document.createElement('div');
+simSpeedLabel.className = 'sim-meter-label';
+simSpeedLabel.textContent = 'SPEED';
+const simSpeedValue = document.createElement('div');
+simSpeedValue.id = 'sim-speed-value';
+simSpeedValue.className = 'sim-meter-numerals';
+simSpeedValue.textContent = '0.00';
+const simSpeedUnit = document.createElement('div');
+simSpeedUnit.className = 'sim-meter-unit';
+simSpeedUnit.textContent = 'u/s';
+simSpeedometer.appendChild(simSpeedLabel);
+simSpeedometer.appendChild(simSpeedValue);
+simSpeedometer.appendChild(simSpeedUnit);
+simSpeedometer.style.display = 'none';
+document.body.appendChild(simSpeedometer);
+
+const simThrottleMeter = document.createElement('div');
+simThrottleMeter.id = 'sim-throttle-meter';
+const simThrottleLabel = document.createElement('div');
+simThrottleLabel.className = 'sim-meter-label';
+simThrottleLabel.textContent = 'THROTTLE';
+const simThrottleTrack = document.createElement('div');
+simThrottleTrack.className = 'sim-meter-track';
+const simThrottleFill = document.createElement('div');
+simThrottleFill.id = 'sim-throttle-fill';
+simThrottleTrack.appendChild(simThrottleFill);
+const simThrottleValue = document.createElement('div');
+simThrottleValue.id = 'sim-throttle-value';
+simThrottleValue.className = 'sim-meter-numerals';
+simThrottleValue.textContent = '0%';
+simThrottleMeter.appendChild(simThrottleLabel);
+simThrottleMeter.appendChild(simThrottleTrack);
+simThrottleMeter.appendChild(simThrottleValue);
+simThrottleMeter.style.display = 'none';
+document.body.appendChild(simThrottleMeter);
+
 pokeballPopupClose.addEventListener('click', (e) => {
     e.stopPropagation();
     showPokeballLink = false;
@@ -190,9 +335,195 @@ sasLinksToggle.addEventListener('click', (e) => {
 
 projectsDropdownToggle.addEventListener('click', (e) => {
     e.stopPropagation();
+    todoDropdownMenu.classList.remove('open');
+    todoDropdownToggle.setAttribute('aria-expanded', 'false');
     const isOpen = projectsDropdownMenu.classList.toggle('open');
     projectsDropdownToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
 });
+
+todoDropdownToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    projectsDropdownMenu.classList.remove('open');
+    projectsDropdownToggle.setAttribute('aria-expanded', 'false');
+    const isOpen = todoDropdownMenu.classList.toggle('open');
+    todoDropdownToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+});
+
+function saveTodoSections() {
+    try {
+        localStorage.setItem(todoStorageKey, JSON.stringify(todoSections));
+    } catch (error) {
+        console.warn('Failed to save todo sections.', error);
+    }
+}
+
+function loadTodoSections() {
+    try {
+        const rawValue = localStorage.getItem(todoStorageKey);
+        if (!rawValue) {
+            return [];
+        }
+        const parsed = JSON.parse(rawValue);
+        if (!Array.isArray(parsed)) {
+            return [];
+        }
+        const sanitized = parsed
+            .map((value) => (typeof value === 'string' ? value.trim() : ''))
+            .filter((value) => value.length > 0);
+        return sanitized;
+    } catch (error) {
+        console.warn('Failed to read saved todo sections; using empty list.', error);
+        return [];
+    }
+}
+
+function renderTodoSections() {
+    if (!todoSectionsListEl) {
+        return;
+    }
+
+    todoSectionsListEl.innerHTML = '';
+
+    if (todoSections.length === 0) {
+        const emptyEl = document.createElement('div');
+        emptyEl.className = 'todo-empty';
+        emptyEl.textContent = 'No sections yet';
+        todoSectionsListEl.appendChild(emptyEl);
+        return;
+    }
+
+    todoSections.forEach((section, index) => {
+        const row = document.createElement('div');
+        row.className = 'todo-section-row';
+        row.dataset.index = String(index);
+
+        const title = document.createElement('span');
+        title.className = 'todo-section-title';
+        title.textContent = section;
+        row.appendChild(title);
+
+        const actions = document.createElement('div');
+        actions.className = 'todo-section-actions';
+
+        const upButton = document.createElement('button');
+        upButton.type = 'button';
+        upButton.className = 'todo-action';
+        upButton.dataset.action = 'up';
+        upButton.dataset.index = String(index);
+        upButton.textContent = '↑';
+        upButton.title = 'Move up';
+        actions.appendChild(upButton);
+
+        const downButton = document.createElement('button');
+        downButton.type = 'button';
+        downButton.className = 'todo-action';
+        downButton.dataset.action = 'down';
+        downButton.dataset.index = String(index);
+        downButton.textContent = '↓';
+        downButton.title = 'Move down';
+        actions.appendChild(downButton);
+
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'todo-action';
+        deleteButton.dataset.action = 'delete';
+        deleteButton.dataset.index = String(index);
+        deleteButton.textContent = 'x';
+        deleteButton.title = 'Delete';
+        actions.appendChild(deleteButton);
+
+        row.appendChild(actions);
+        todoSectionsListEl.appendChild(row);
+    });
+}
+
+function addTodoSection() {
+    if (!todoSectionInput) {
+        return;
+    }
+
+    const title = todoSectionInput.value.trim();
+    if (!title) {
+        return;
+    }
+
+    todoSections.push(title);
+    todoSectionInput.value = '';
+    saveTodoSections();
+    renderTodoSections();
+}
+
+function moveTodoSectionUp(index) {
+    if (index <= 0 || index >= todoSections.length) {
+        return;
+    }
+    [todoSections[index - 1], todoSections[index]] = [todoSections[index], todoSections[index - 1]];
+    saveTodoSections();
+    renderTodoSections();
+}
+
+function moveTodoSectionDown(index) {
+    if (index < 0 || index >= todoSections.length - 1) {
+        return;
+    }
+    [todoSections[index + 1], todoSections[index]] = [todoSections[index], todoSections[index + 1]];
+    saveTodoSections();
+    renderTodoSections();
+}
+
+function deleteTodoSection(index) {
+    if (index < 0 || index >= todoSections.length) {
+        return;
+    }
+    todoSections.splice(index, 1);
+    saveTodoSections();
+    renderTodoSections();
+}
+
+if (todoSectionAddButton) {
+    todoSectionAddButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        addTodoSection();
+    });
+}
+
+if (todoSectionInput) {
+    todoSectionInput.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            addTodoSection();
+        }
+    });
+}
+
+if (todoSectionsListEl) {
+    todoSectionsListEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const actionButton = e.target.closest('.todo-action');
+        if (!actionButton) {
+            return;
+        }
+
+        const index = Number(actionButton.dataset.index);
+        if (!Number.isInteger(index)) {
+            return;
+        }
+
+        const action = actionButton.dataset.action;
+        if (action === 'up') {
+            moveTodoSectionUp(index);
+            return;
+        }
+        if (action === 'down') {
+            moveTodoSectionDown(index);
+            return;
+        }
+        if (action === 'delete') {
+            deleteTodoSection(index);
+        }
+    });
+}
 
 function updateCityTimes() {
     const now = new Date();
@@ -306,6 +637,28 @@ function createSASCube() {
     earthTiltGroup.add(sasCube);
     objects.push(sasCube);
 
+    earthCloudLayers.length = 0;
+    const cloudLayerConfigs = [
+        { radius: 0.357, opacity: 0.74, rotationY: 0.0 },
+        { radius: 0.362, opacity: 0.36, rotationY: Math.PI / 5 }
+    ];
+    const cloudMaterials = [];
+
+    cloudLayerConfigs.forEach((config) => {
+        const cloudGeom = new THREE.SphereGeometry(config.radius, 48, 48);
+        const cloudMat = new THREE.MeshPhongMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: config.opacity,
+            depthWrite: false
+        });
+        const cloudLayer = new THREE.Mesh(cloudGeom, cloudMat);
+        cloudLayer.rotation.y = config.rotationY;
+        sasCube.add(cloudLayer);
+        earthCloudLayers.push(cloudLayer);
+        cloudMaterials.push(cloudMat);
+    });
+
     textureLoader.load(
         'https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg',
         (earthTexture) => {
@@ -320,15 +673,396 @@ function createSASCube() {
             console.warn('Earth texture failed to load; using fallback sphere color.');
         }
     );
+
+    textureLoader.load(
+        'https://threejs.org/examples/textures/planets/earth_clouds_1024.png',
+        (cloudTexture) => {
+            cloudTexture.encoding = THREE.sRGBEncoding;
+            cloudTexture.flipY = true;
+            cloudMaterials.forEach((cloudMat) => {
+                cloudMat.map = cloudTexture;
+                cloudMat.alphaMap = cloudTexture;
+                cloudMat.needsUpdate = true;
+            });
+        },
+        undefined,
+        () => {
+            console.warn('Earth cloud texture failed to load; using layered transparent cloud fallback.');
+        }
+    );
+}
+
+function createSpaceflightSimDisplay() {
+    if (!earthTiltGroup) {
+        return;
+    }
+    spaceStationPivot = new THREE.Group();
+    spaceStationPivot.name = 'Space Station Orbit Pivot';
+    spaceStationPivot.rotation.z = spaceflightStationOrbitTiltRad;
+    earthTiltGroup.add(spaceStationPivot);
+
+    spaceStation = new THREE.Group();
+    spaceStation.name = 'Space Station';
+    spaceStation.userData.projectId = 'spaceflight-sim-3d';
+    spaceStation.position.set(spaceflightStationOrbitRadius, 0, 0);
+    spaceStation.scale.setScalar(0.16);
+    spaceStationPivot.add(spaceStation);
+
+    const stationCore = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.12, 0.62, 24),
+        new THREE.MeshStandardMaterial({ color: 0xd7dce9, roughness: 0.38, metalness: 0.72 })
+    );
+    stationCore.rotation.z = Math.PI / 2;
+    stationCore.userData.projectId = 'spaceflight-sim-3d';
+    spaceStation.add(stationCore);
+    objects.push(stationCore);
+
+    const stationHub = new THREE.Mesh(
+        new THREE.SphereGeometry(0.13, 20, 20),
+        new THREE.MeshStandardMaterial({ color: 0xbec6d7, roughness: 0.25, metalness: 0.83 })
+    );
+    stationHub.userData.projectId = 'spaceflight-sim-3d';
+    spaceStation.add(stationHub);
+    objects.push(stationHub);
+
+    const stationRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.25, 0.02, 12, 36),
+        new THREE.MeshStandardMaterial({ color: 0x9ea8bc, roughness: 0.3, metalness: 0.75 })
+    );
+    stationRing.rotation.x = Math.PI / 2;
+    stationRing.userData.projectId = 'spaceflight-sim-3d';
+    spaceStation.add(stationRing);
+    objects.push(stationRing);
+
+    const panelGeometry = new THREE.BoxGeometry(0.88, 0.04, 0.34);
+    const panelMaterial = new THREE.MeshStandardMaterial({
+        color: 0x3f5d96,
+        emissive: 0x22335a,
+        roughness: 0.52,
+        metalness: 0.4
+    });
+    const leftPanel = new THREE.Mesh(panelGeometry, panelMaterial);
+    leftPanel.position.set(-0.74, 0, 0);
+    leftPanel.userData.projectId = 'spaceflight-sim-3d';
+    const rightPanel = leftPanel.clone();
+    rightPanel.position.x = 0.74;
+    rightPanel.userData.projectId = 'spaceflight-sim-3d';
+    spaceStation.add(leftPanel, rightPanel);
+    objects.push(leftPanel, rightPanel);
+
+    spaceShip = new THREE.Group();
+    spaceShip.name = 'Space Ship';
+    spaceShip.userData.projectId = 'spaceflight-sim-3d';
+    spaceShip.position.copy(shipDockOffset);
+    spaceStation.add(spaceShip);
+
+    const shipBody = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.024, 0.032, 0.18, 14),
+        new THREE.MeshStandardMaterial({ color: 0xeaf2ff, roughness: 0.42, metalness: 0.68 })
+    );
+    shipBody.rotation.x = Math.PI / 2;
+    shipBody.userData.projectId = 'spaceflight-sim-3d';
+    spaceShip.add(shipBody);
+    objects.push(shipBody);
+
+    const shipNose = new THREE.Mesh(
+        new THREE.ConeGeometry(0.026, 0.07, 14),
+        new THREE.MeshStandardMaterial({ color: 0xc5d8ff, roughness: 0.35, metalness: 0.62 })
+    );
+    shipNose.position.z = -0.11;
+    shipNose.rotation.x = Math.PI / 2;
+    shipNose.userData.projectId = 'spaceflight-sim-3d';
+    spaceShip.add(shipNose);
+    objects.push(shipNose);
+
+    const shipWingGeometry = new THREE.BoxGeometry(0.13, 0.01, 0.055);
+    const shipWingMaterial = new THREE.MeshStandardMaterial({ color: 0x3a5f98, roughness: 0.56, metalness: 0.35 });
+    const shipWing = new THREE.Mesh(shipWingGeometry, shipWingMaterial);
+    shipWing.position.set(0, -0.015, 0);
+    shipWing.userData.projectId = 'spaceflight-sim-3d';
+    spaceShip.add(shipWing);
+    objects.push(shipWing);
+
+    const shipEngine = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.018, 0.02, 0.04, 12),
+        new THREE.MeshStandardMaterial({ color: 0x98a8c6, roughness: 0.44, metalness: 0.73 })
+    );
+    shipEngine.position.z = 0.105;
+    shipEngine.rotation.x = Math.PI / 2;
+    shipEngine.userData.projectId = 'spaceflight-sim-3d';
+    spaceShip.add(shipEngine);
+    objects.push(shipEngine);
+
+    const shipEngineGlow = new THREE.Mesh(
+        new THREE.SphereGeometry(0.012, 12, 12),
+        new THREE.MeshStandardMaterial({
+            color: 0x89c7ff,
+            emissive: 0x89c7ff,
+            emissiveIntensity: 0,
+            transparent: true,
+            opacity: 0.35
+        })
+    );
+    shipEngineGlow.position.set(0, 0, 0.136);
+    shipEngineGlow.userData.projectId = 'spaceflight-sim-3d';
+    spaceShip.add(shipEngineGlow);
+    shipEngineGlowMaterial = shipEngineGlow.material;
+    objects.push(shipEngineGlow);
+
+    shipEngineLight = new THREE.PointLight(0x7ec2ff, 0, 1.2, 2);
+    shipEngineLight.position.set(0, 0, 0.145);
+    spaceShip.add(shipEngineLight);
+
+    const orbitPoints = [];
+    const orbitSegments = 220;
+    for (let i = 0; i <= orbitSegments; i += 1) {
+        const angle = (i / orbitSegments) * TWO_PI;
+        orbitPoints.push(
+            new THREE.Vector3(
+                Math.cos(angle) * spaceflightStationOrbitRadius,
+                0,
+                Math.sin(angle) * spaceflightStationOrbitRadius
+            )
+        );
+    }
+    const orbitGeometry = new THREE.BufferGeometry().setFromPoints(orbitPoints);
+    const orbitMaterial = new THREE.LineBasicMaterial({
+        color: spaceflightOrbitPathColor,
+        transparent: true,
+        opacity: spaceflightOrbitPathOpacity
+    });
+    const orbitRing = new THREE.LineLoop(orbitGeometry, orbitMaterial);
+    spaceStationPivot.add(orbitRing);
+}
+
+function resetShipControlState() {
+    Object.keys(shipControlState).forEach((key) => {
+        shipControlState[key] = false;
+    });
+}
+
+function undockSpaceShip() {
+    if (!spaceShip || !spaceStation || !earthTiltGroup || !shipDocked || shipAutoDockActive) {
+        return;
+    }
+    earthTiltGroup.attach(spaceShip);
+    shipDocked = false;
+    shipAutoDockActive = false;
+    shipOrbitVelocityLocal.set(
+        -Math.sin(spaceflightStationOrbitAngle) * spaceflightStationOrbitRadius * spaceflightStationAngularSpeed,
+        0,
+        Math.cos(spaceflightStationOrbitAngle) * spaceflightStationOrbitRadius * spaceflightStationAngularSpeed
+    );
+    shipOrbitVelocityTiltLocal.copy(shipOrbitVelocityLocal).applyQuaternion(spaceStationPivot.quaternion);
+    shipOrbitVelocityWorld.copy(shipOrbitVelocityTiltLocal).applyQuaternion(earthTiltGroup.quaternion);
+    shipVelocity.copy(shipOrbitVelocityWorld);
+}
+
+function activateSpaceflightControl() {
+    if (!spaceShip) {
+        return;
+    }
+    if (freecamEnabled) {
+        disableFreecam();
+    }
+    shipControlActive = true;
+    trackedObject = null;
+    controls.enabled = false;
+    document.body.style.cursor = 'none';
+    if (document.pointerLockElement !== renderer.domElement && renderer.domElement.requestPointerLock) {
+        renderer.domElement.requestPointerLock();
+    }
+}
+
+function deactivateSpaceflightControl() {
+    if (!shipControlActive) {
+        return;
+    }
+    shipControlActive = false;
+    shipAutoDockActive = false;
+    shipVelocity.multiplyScalar(0.94);
+    resetShipControlState();
+    controls.enabled = true;
+    shipThrottleLevel = 0;
+    shipThrottleCommand = 0;
+    document.body.style.cursor = '';
+    if (document.pointerLockElement === renderer.domElement && document.exitPointerLock) {
+        document.exitPointerLock();
+    }
+}
+
+function getDockDistanceToShip() {
+    if (!spaceShip || !spaceStation) {
+        return Infinity;
+    }
+    spaceShip.getWorldPosition(shipWorldPos);
+    shipDockWorldPos.copy(shipDockOffset);
+    spaceStation.localToWorld(shipDockWorldPos);
+    return shipWorldPos.distanceTo(shipDockWorldPos);
+}
+
+function completeShipDocking() {
+    if (!spaceShip || !spaceStation) {
+        return;
+    }
+    spaceStation.attach(spaceShip);
+    spaceShip.position.copy(shipDockOffset);
+    spaceShip.quaternion.identity();
+    shipVelocity.set(0, 0, 0);
+    shipDocked = true;
+    shipAutoDockActive = false;
+}
+
+function attemptShipRelatch() {
+    if (!shipControlActive || !spaceShip || !spaceStation || !earthTiltGroup || shipDocked || shipAutoDockActive) {
+        return;
+    }
+    if (getDockDistanceToShip() > shipLatchRange) {
+        return;
+    }
+    shipAutoDockActive = true;
+    shipThrottleCommand = 0;
+    shipVelocity.set(0, 0, 0);
+    resetShipControlState();
+}
+
+function updateShipAutoDock(dt) {
+    if (!shipAutoDockActive || !spaceShip || !spaceStation || !earthTiltGroup) {
+        return;
+    }
+
+    shipDockWorldPos.copy(shipDockOffset);
+    spaceStation.localToWorld(shipDockWorldPos);
+    shipDockLocalPos.copy(shipDockWorldPos);
+    earthTiltGroup.worldToLocal(shipDockLocalPos);
+
+    const toDockDist = spaceShip.position.distanceTo(shipDockLocalPos);
+    const moveStep = shipAutoDockSpeed * dt;
+    if (toDockDist <= moveStep || toDockDist < 0.03) {
+        completeShipDocking();
+        return;
+    }
+    spaceShip.position.lerp(shipDockLocalPos, moveStep / toDockDist);
+
+    spaceStation.getWorldQuaternion(shipTargetWorldQuat);
+    earthTiltGroup.getWorldQuaternion(shipParentWorldQuat);
+    shipParentWorldQuat.invert();
+    shipTargetLocalQuat.copy(shipParentWorldQuat).multiply(shipTargetWorldQuat);
+    spaceShip.quaternion.slerp(shipTargetLocalQuat, shipAutoDockRotateLerp);
+}
+
+function updateThrottleMeter() {
+    if (!simThrottleMeter) {
+        return;
+    }
+
+    if (!shipControlActive) {
+        simThrottleMeter.style.display = 'none';
+        return;
+    }
+
+    simThrottleMeter.style.display = 'block';
+    const percent = Math.round(THREE.MathUtils.clamp(shipThrottleCommand, 0, 1) * 100);
+    simThrottleFill.style.width = `${percent}%`;
+    simThrottleValue.textContent = `${percent}%`;
+}
+
+function updateShipEngineVisuals(dt, targetThrottleLevel) {
+    const target = THREE.MathUtils.clamp(targetThrottleLevel, 0, 1);
+    const blend = 1 - Math.exp(-shipThrottleLerpSpeed * dt);
+    shipThrottleLevel += (target - shipThrottleLevel) * blend;
+
+    if (shipEngineGlowMaterial) {
+        shipEngineGlowMaterial.emissiveIntensity = 0.08 + shipThrottleLevel * 3.2;
+        shipEngineGlowMaterial.opacity = 0.26 + shipThrottleLevel * 0.62;
+    }
+    if (shipEngineLight) {
+        shipEngineLight.intensity = shipThrottleLevel * 3.8;
+    }
+}
+
+function updateSpeedometer() {
+    if (!simSpeedometer) {
+        return;
+    }
+
+    if (!shipControlActive) {
+        simSpeedometer.style.display = 'none';
+        return;
+    }
+
+    simSpeedometer.style.display = 'block';
+    const speed = shipVelocity.length();
+    simSpeedValue.textContent = speed.toFixed(2);
+}
+
+function adjustManualThrottle(delta) {
+    shipThrottleCommand = THREE.MathUtils.clamp(shipThrottleCommand + delta, 0, 1);
+}
+
+function updateSpaceShipControl(dt) {
+    if (!shipControlActive || !spaceShip) {
+        return;
+    }
+    if (shipAutoDockActive) {
+        updateShipAutoDock(dt);
+        updateShipEngineVisuals(dt, 0);
+        return;
+    }
+    if (shipDocked) {
+        updateShipEngineVisuals(dt, shipThrottleCommand);
+        return;
+    }
+
+    const rollStep = shipRollRateRadPerSecond * dt;
+
+    if (shipControlState.KeyA) {
+        spaceShip.rotateZ(rollStep);
+    }
+    if (shipControlState.KeyD) {
+        spaceShip.rotateZ(-rollStep);
+    }
+
+    const thrustInput = shipThrottleCommand;
+
+    if (thrustInput !== 0) {
+        shipForwardWorld.copy(shipForwardAxis).applyQuaternion(spaceShip.quaternion).normalize();
+        const boost = shipControlState.ShiftLeft ? shipBoostMultiplier : 1;
+        shipVelocity.addScaledVector(shipForwardWorld, shipAcceleration * boost * thrustInput * dt);
+    }
+
+    const drag = shipControlState.Space ? shipBrakeDragPerSecond : shipDragPerSecond;
+    shipVelocity.multiplyScalar(Math.exp(-drag * dt));
+    if (shipVelocity.lengthSq() > shipMaxSpeed * shipMaxSpeed) {
+        shipVelocity.setLength(shipMaxSpeed);
+    }
+    spaceShip.position.addScaledVector(shipVelocity, dt);
+    updateShipEngineVisuals(dt, Math.min(1, thrustInput * (shipControlState.ShiftLeft ? 1 : 0.75)));
+}
+
+function updateSpaceShipCamera() {
+    if (!shipControlActive || !spaceShip) {
+        return;
+    }
+
+    spaceShip.getWorldPosition(shipWorldPos);
+    spaceShip.getWorldQuaternion(shipWorldQuat);
+    shipForwardWorld.copy(shipForwardAxis).applyQuaternion(shipWorldQuat).normalize();
+    shipUpWorld.copy(shipUpAxis).applyQuaternion(shipWorldQuat).normalize();
+
+    shipCameraDesiredPos
+        .copy(shipWorldPos)
+        .addScaledVector(shipForwardWorld, -shipCameraBackOffset)
+        .addScaledVector(shipUpWorld, shipCameraUpOffset);
+    shipCameraLookTarget.copy(shipWorldPos).addScaledVector(shipForwardWorld, shipCameraLookAhead);
+    camera.position.copy(shipCameraDesiredPos);
+    camera.lookAt(shipCameraLookTarget);
 }
 
 function createHomeSphere() {
     const homeGeom = new THREE.SphereGeometry(1.15, 48, 48);
-    const homeMat = new THREE.MeshPhongMaterial({
-        color: 0xffffff,
-        emissive: 0xff9b2f,
-        emissiveIntensity: 1.35,
-        shininess: 20
+    const homeMat = new THREE.MeshBasicMaterial({
+        color: 0xfff35c
     });
     homeMat.toneMapped = false;
     homeSphere = new THREE.Mesh(homeGeom, homeMat);
@@ -349,7 +1083,6 @@ function createHomeSphere() {
             sunTexture.encoding = THREE.sRGBEncoding;
             sunTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
             homeMat.map = sunTexture;
-            homeMat.emissiveMap = sunTexture;
             homeMat.needsUpdate = true;
         },
         undefined,
@@ -358,40 +1091,46 @@ function createHomeSphere() {
         }
     );
 
-    const coronaGeom = new THREE.SphereGeometry(1.15 * sunVisualConfig.coronaScale, 48, 48);
-    const coronaMat = new THREE.ShaderMaterial({
-        uniforms: {
-            uTime: { value: 0 }
-        },
-        vertexShader: `
-            varying vec3 vNormalW;
-            varying vec3 vViewDir;
-            void main() {
-                vec4 worldPos = modelMatrix * vec4(position, 1.0);
-                vNormalW = normalize(mat3(modelMatrix) * normal);
-                vViewDir = normalize(cameraPosition - worldPos.xyz);
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: `
-            uniform float uTime;
-            varying vec3 vNormalW;
-            varying vec3 vViewDir;
-            void main() {
-                float rim = pow(1.0 - max(dot(normalize(vNormalW), normalize(vViewDir)), 0.0), 2.8);
-                float flicker = 0.82 + 0.18 * sin(uTime * 2.3 + vNormalW.y * 10.0 + vNormalW.x * 8.0);
-                vec3 color = vec3(1.0, 0.62, 0.18) * (rim * flicker);
-                gl_FragColor = vec4(color, rim * 0.78);
-            }
-        `,
+    const glowCanvas = document.createElement('canvas');
+    glowCanvas.width = 256;
+    glowCanvas.height = 256;
+    const glowCtx = glowCanvas.getContext('2d');
+    const glowGradient = glowCtx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    glowGradient.addColorStop(0.0, 'rgba(255, 250, 170, 0.96)');
+    glowGradient.addColorStop(0.22, 'rgba(255, 246, 120, 0.68)');
+    glowGradient.addColorStop(0.52, 'rgba(255, 236, 70, 0.28)');
+    glowGradient.addColorStop(1.0, 'rgba(255, 220, 40, 0)');
+    glowCtx.fillStyle = glowGradient;
+    glowCtx.fillRect(0, 0, 256, 256);
+
+    const glowTexture = new THREE.CanvasTexture(glowCanvas);
+    glowTexture.colorSpace = THREE.SRGBColorSpace;
+    const innerGlowMat = new THREE.SpriteMaterial({
+        map: glowTexture,
+        color: 0xfff170,
         transparent: true,
+        opacity: 0.58,
         blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-        toneMapped: false
+        depthWrite: false
     });
-    homeCorona = new THREE.Mesh(coronaGeom, coronaMat);
-    homeSphere.add(homeCorona);
+    innerGlowMat.toneMapped = false;
+    const outerGlowMat = new THREE.SpriteMaterial({
+        map: glowTexture,
+        color: 0xffe746,
+        transparent: true,
+        opacity: 0.34,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    });
+    outerGlowMat.toneMapped = false;
+    sunGlowLayer = new THREE.Group();
+    const innerGlow = new THREE.Sprite(innerGlowMat);
+    innerGlow.scale.set(3.8, 3.8, 1);
+    const outerGlow = new THREE.Sprite(outerGlowMat);
+    outerGlow.scale.set(5.8, 5.8, 1);
+    sunGlowLayer.add(outerGlow);
+    sunGlowLayer.add(innerGlow);
+    homeSphere.add(sunGlowLayer);
 }
 
 // create a simple pokeball made from two hemispheres, a ring and a button
@@ -440,6 +1179,92 @@ function createPokeball() {
     objects.push(pokeball);
 }
 
+function normalizeAngleRad(rad) {
+    return ((rad % TWO_PI) + TWO_PI) % TWO_PI;
+}
+
+function solveEccentricAnomaly(meanAnomalyRad, eccentricity) {
+    const M = normalizeAngleRad(meanAnomalyRad);
+    let E = eccentricity < 0.8 ? M : Math.PI;
+
+    for (let i = 0; i < 7; i += 1) {
+        const f = E - eccentricity * Math.sin(E) - M;
+        const fPrime = 1 - eccentricity * Math.cos(E);
+        E -= f / fPrime;
+    }
+
+    return E;
+}
+
+function getTrueAnomalyFromEccentric(E, eccentricity) {
+    const sinHalf = Math.sin(E / 2);
+    const cosHalf = Math.cos(E / 2);
+    return 2 * Math.atan2(
+        Math.sqrt(1 + eccentricity) * sinHalf,
+        Math.sqrt(1 - eccentricity) * cosHalf
+    );
+}
+
+function getOrbitPositionForTrueAnomaly(orbit, trueAnomalyRad, target) {
+    const oneMinusEsq = 1 - orbit.eccentricity * orbit.eccentricity;
+    const radius = (orbit.semiMajorAxis * oneMinusEsq) / (1 + orbit.eccentricity * Math.cos(trueAnomalyRad));
+
+    target.set(radius * Math.cos(trueAnomalyRad), 0, radius * Math.sin(trueAnomalyRad));
+    target.applyAxisAngle(orbitUpAxis, orbit.argumentOfPeriapsisRad);
+    target.applyAxisAngle(orbitPitchAxis, orbit.inclinationRad);
+    target.applyAxisAngle(orbitUpAxis, orbit.longitudeOfAscendingNodeRad);
+    return target;
+}
+
+function createOrbitPath(orbit, color, opacity) {
+    const points = [];
+    for (let i = 0; i <= orbitPathConfig.segments; i += 1) {
+        const trueAnomalyRad = (i / orbitPathConfig.segments) * TWO_PI;
+        const point = new THREE.Vector3();
+        getOrbitPositionForTrueAnomaly(orbit, trueAnomalyRad, point);
+        points.push(point);
+    }
+
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineBasicMaterial({
+        color,
+        transparent: true,
+        opacity
+    });
+    return new THREE.LineLoop(geometry, material);
+}
+
+function createOrbitPaths() {
+    if (!homeSphere) {
+        return;
+    }
+
+    if (orbitPathGroup) {
+        homeSphere.remove(orbitPathGroup);
+    }
+
+    orbitPathGroup = new THREE.Group();
+    orbitPathGroup.name = 'OrbitPaths';
+
+    orbitPathGroup.add(
+        createOrbitPath(
+            orbitConfig.pokeball,
+            orbitPathConfig.pokeball.color,
+            orbitPathConfig.pokeball.opacity
+        )
+    );
+
+    orbitPathGroup.add(
+        createOrbitPath(
+            orbitConfig.sas,
+            orbitPathConfig.sas.color,
+            orbitPathConfig.sas.opacity
+        )
+    );
+
+    homeSphere.add(orbitPathGroup);
+}
+
 function updateOrbitPositions(dt) {
     if (!homeSphere) {
         return;
@@ -448,41 +1273,86 @@ function updateOrbitPositions(dt) {
     homeSphere.getWorldPosition(orbitCenter);
 
     if (pokeball) {
-        orbitConfig.pokeball.angle += orbitConfig.pokeball.speed * dt;
+        const pokeballMeanMotion = TWO_PI / orbitConfig.pokeball.periodSeconds;
+        orbitConfig.pokeball.meanAnomalyRad += pokeballMeanMotion * dt;
+        const pokeballEccentricAnomaly = solveEccentricAnomaly(
+            orbitConfig.pokeball.meanAnomalyRad,
+            orbitConfig.pokeball.eccentricity
+        );
+        const pokeballTrueAnomaly = getTrueAnomalyFromEccentric(
+            pokeballEccentricAnomaly,
+            orbitConfig.pokeball.eccentricity
+        );
+        getOrbitPositionForTrueAnomaly(orbitConfig.pokeball, pokeballTrueAnomaly, pokeballOrbitPos);
         pokeball.position.set(
-            orbitCenter.x + Math.cos(orbitConfig.pokeball.angle) * orbitConfig.pokeball.radius,
-            orbitCenter.y + orbitConfig.pokeball.y,
-            orbitCenter.z + Math.sin(orbitConfig.pokeball.angle) * orbitConfig.pokeball.radius
+            orbitCenter.x + pokeballOrbitPos.x,
+            orbitCenter.y + pokeballOrbitPos.y,
+            orbitCenter.z + pokeballOrbitPos.z
         );
     }
 
     if (sasCube) {
-        orbitConfig.sas.angle = getEarthOrbitAngle(new Date());
+        const earthMeanAnomaly = getEarthMeanAnomaly(new Date());
+        const earthEccentricAnomaly = solveEccentricAnomaly(earthMeanAnomaly, orbitConfig.sas.eccentricity);
+        const earthTrueAnomaly = getTrueAnomalyFromEccentric(earthEccentricAnomaly, orbitConfig.sas.eccentricity);
+        getOrbitPositionForTrueAnomaly(orbitConfig.sas, earthTrueAnomaly, sasOrbitPos);
         earthTiltGroup.position.set(
-            orbitCenter.x + Math.cos(orbitConfig.sas.angle) * orbitConfig.sas.radius,
-            orbitCenter.y + orbitConfig.sas.y,
-            orbitCenter.z + Math.sin(orbitConfig.sas.angle) * orbitConfig.sas.radius
+            orbitCenter.x + sasOrbitPos.x,
+            orbitCenter.y + sasOrbitPos.y,
+            orbitCenter.z + sasOrbitPos.z
         );
     }
 }
 
-function getEarthOrbitAngle(date) {
-    const year = date.getUTCFullYear();
-    const yearStart = Date.UTC(year, 0, 1, 0, 0, 0);
-    const nextYearStart = Date.UTC(year + 1, 0, 1, 0, 0, 0);
-    const yearLengthMs = nextYearStart - yearStart;
-    const yearProgress = ((date.getTime() - yearStart) / yearLengthMs + 1) % 1;
+function getEarthMeanAnomaly(date) {
+    const elapsedDays = (date.getTime() - earthOrbitConfig.perihelionReferenceUtcMs) / 86400000;
+    const orbitProgress = ((elapsedDays / earthOrbitConfig.siderealYearDays) % 1 + 1) % 1;
+    return orbitConfig.sas.meanAnomalyAtReferenceRad + orbitProgress * TWO_PI;
+}
 
-    const perihelionMs = Date.UTC(year, 0, earthOrbitConfig.perihelionDayOfYear, 0, 0, 0);
-    const perihelionProgress = ((perihelionMs - yearStart) / yearLengthMs + 1) % 1;
-    const orbitProgress = (yearProgress - perihelionProgress + 1) % 1;
+function normalizeLongitudeDegrees(deg) {
+    return ((deg + 540) % 360) - 180;
+}
 
-    return orbitProgress * Math.PI * 2;
+function getSubsolarLongitudeDeg(date) {
+    if (earthClockSyncConfig.mode === 'reference-image') {
+        return earthClockSyncConfig.referenceSubsolarLongitudeDeg;
+    }
+
+    const timeParts = earthSyncTimePartsFormatter.formatToParts(date);
+    const hour = Number(timeParts.find((part) => part.type === 'hour')?.value ?? 0);
+    const minute = Number(timeParts.find((part) => part.type === 'minute')?.value ?? 0);
+    const second = Number(timeParts.find((part) => part.type === 'second')?.value ?? 0);
+
+    const localHours = hour + minute / 60 + second / 3600;
+    const hourAngleDeg = (localHours - 12) * 15;
+    return normalizeLongitudeDegrees(earthClockSyncConfig.longitudeDeg - hourAngleDeg);
+}
+
+function getEarthAxialRotationForDate(date) {
+    if (!earthTiltGroup) {
+        return 0;
+    }
+
+    const subsolarLongitudeDeg = getSubsolarLongitudeDeg(date);
+    const sunDirectionWorld = orbitCenter.clone().sub(earthTiltGroup.position).normalize();
+    const sunDirectionTiltLocal = sunDirectionWorld.applyQuaternion(
+        earthTiltGroup.quaternion.clone().invert()
+    );
+    const sunAzimuthRad = Math.atan2(sunDirectionTiltLocal.x, sunDirectionTiltLocal.z);
+
+    // Include texture alignment offset so day/night tracks real time with the current Earth texture orientation.
+    return (
+        sunAzimuthRad -
+        THREE.MathUtils.degToRad(subsolarLongitudeDeg - earthClockSyncConfig.textureLongitudeOffsetDeg)
+    );
 }
 
 createHomeSphere();
 createPokeball();
 createSASCube();
+createSpaceflightSimDisplay();
+createOrbitPaths();
 updateOrbitPositions(0);
 
 // use OrbitControls for navigation
@@ -571,11 +1441,18 @@ const projects = {
     'sas': {
         object: () => sasCube,
         zoomDistance: 5
+    },
+    'spaceflight-sim-3d': {
+        object: () => spaceStation || sasCube,
+        zoomDistance: 4.5
     }
 };
 
 function handleProjectSelection(projectId, options = {}) {
     const { zoomIn = false } = options;
+    if (projectId !== 'spaceflight-sim-3d') {
+        deactivateSpaceflightControl();
+    }
     const project = projects[projectId];
     if (!project) {
         return;
@@ -586,30 +1463,30 @@ function handleProjectSelection(projectId, options = {}) {
         return;
     }
 
+    showPokeballLink = false;
+    showSASLink = false;
+    pokeballLinkPopup.style.display = 'none';
+    sasLinkPopup.style.display = 'none';
+
+    if (projectId === 'spaceflight-sim-3d') {
+        activateSpaceflightControl();
+        updateSpaceShipCamera();
+        updateSpeedometer();
+        return;
+    }
+
     trackedObject = object3D;
     focusOnObject(object3D, zoomIn ? project.zoomDistance : null);
 
     if (projectId === 'cobblemon-more-cosmetics') {
         showPokeballLink = true;
-        showSASLink = false;
-        sasLinkPopup.style.display = 'none';
         updatePokeballLinkLabelPosition();
         return;
     }
 
     if (projectId === 'sas') {
-        showPokeballLink = false;
-        pokeballLinkPopup.style.display = 'none';
         showSASLink = true;
         updateSASLinkLabelPosition();
-        return;
-    }
-
-    if (projectId === 'home') {
-        showPokeballLink = false;
-        showSASLink = false;
-        pokeballLinkPopup.style.display = 'none';
-        sasLinkPopup.style.display = 'none';
     }
 }
 
@@ -623,7 +1500,9 @@ document.querySelectorAll('.project-item').forEach((button) => {
     });
 });
 
-handleProjectSelection('home');
+handleProjectSelection('home', { zoomIn: true });
+todoSections = loadTodoSections();
+renderTodoSections();
 updateCityTimes();
 setInterval(updateCityTimes, 1000);
 
@@ -632,20 +1511,26 @@ const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
 document.addEventListener('click', (e) => {
+    if (shipControlActive && document.pointerLockElement !== renderer.domElement && renderer.domElement.requestPointerLock) {
+        renderer.domElement.requestPointerLock();
+    }
+
     if (freecamEnabled && pointerControls && !pointerControls.isLocked) {
         pointerControls.lock();
         return;
     }
 
-    if (!e.target.closest('#projects-sidebar')) {
+    if (!e.target.closest('#projects-sidebar, #todo-sidebar')) {
         projectsDropdownMenu.classList.remove('open');
         projectsDropdownToggle.setAttribute('aria-expanded', 'false');
+        todoDropdownMenu.classList.remove('open');
+        todoDropdownToggle.setAttribute('aria-expanded', 'false');
     }
     if (!e.target.closest('#sas-link-popup')) {
         sasLinksList.classList.remove('open');
     }
 
-    if (e.target.closest('#pokeball-link-popup, #sas-link-popup, #projects-sidebar, #info-panel, #time-widget')) {
+    if (e.target.closest('#pokeball-link-popup, #sas-link-popup, #projects-sidebar, #todo-sidebar, #info-panel, #time-widget')) {
         return;
     }
 
@@ -666,6 +1551,44 @@ document.addEventListener('click', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
+    if (shipControlActive && (e.code === 'KeyW' || e.code === 'KeyS')) {
+        e.preventDefault();
+        if (!e.repeat) {
+            const step = e.shiftKey ? shipThrottleFineStep : shipThrottleStep;
+            if (e.code === 'KeyW') {
+                adjustManualThrottle(step);
+            } else {
+                adjustManualThrottle(-step);
+            }
+            updateThrottleMeter();
+        }
+        return;
+    }
+
+    if (shipControlActive && e.code in shipControlState) {
+        e.preventDefault();
+        shipControlState[e.code] = true;
+        return;
+    }
+
+    if (shipControlActive && e.code === 'KeyL') {
+        e.preventDefault();
+        if (shipDocked) {
+            undockSpaceShip();
+        } else {
+            attemptShipRelatch();
+        }
+        return;
+    }
+
+    if (shipControlActive && e.code === 'Escape') {
+        e.preventDefault();
+        deactivateSpaceflightControl();
+        trackedObject = spaceShip || spaceStation || sasCube;
+        focusOnObject(trackedObject, 5.5);
+        return;
+    }
+
     if (e.code === 'KeyF' && pointerControls) {
         e.preventDefault();
         toggleFreecam();
@@ -685,8 +1608,38 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('keyup', (e) => {
+    if (e.code in shipControlState) {
+        shipControlState[e.code] = false;
+    }
     if (e.code in freecamMoveState) {
         freecamMoveState[e.code] = false;
+    }
+});
+
+document.addEventListener('mousemove', (e) => {
+    if (!shipControlActive || !spaceShip || shipDocked || shipAutoDockActive) {
+        return;
+    }
+    if (document.pointerLockElement !== renderer.domElement) {
+        return;
+    }
+
+    if (e.movementX) {
+        spaceShip.rotateY(-e.movementX * shipMouseYawSensitivity);
+    }
+    if (e.movementY) {
+        spaceShip.rotateX(-e.movementY * shipMousePitchSensitivity);
+    }
+});
+
+document.addEventListener('pointerlockchange', () => {
+    if (!shipControlActive) {
+        return;
+    }
+    if (document.pointerLockElement !== renderer.domElement) {
+        document.body.style.cursor = '';
+    } else {
+        document.body.style.cursor = 'none';
     }
 });
 
@@ -718,31 +1671,55 @@ function updateFreecamMovement(dt) {
     }
 }
 
+let spaceflightStationOrbitAngle = 0;
+function updateSpaceflightSim(dt) {
+    if (!spaceStationPivot || !spaceStation || !sasCube) {
+        return;
+    }
+
+    spaceflightStationOrbitAngle += spaceflightStationAngularSpeed * dt;
+    spaceStation.position.set(
+        Math.cos(spaceflightStationOrbitAngle) * spaceflightStationOrbitRadius,
+        0,
+        Math.sin(spaceflightStationOrbitAngle) * spaceflightStationOrbitRadius
+    );
+    sasCube.getWorldPosition(spaceStationTargetPos);
+    spaceStation.lookAt(spaceStationTargetPos);
+    spaceStation.rotateY(Math.PI / 2);
+    updateSpaceShipControl(dt);
+    updateThrottleMeter();
+    updateSpeedometer();
+}
+
 
 let lastTime=performance.now();
+let earthAxialSpinOffset = 0;
 function animate(){
     requestAnimationFrame(animate);
     const now=performance.now();
+    const nowDate = new Date();
     const dt=(now-lastTime)/1000; lastTime=now;
     updateOrbitPositions(dt);
+    updateSpaceflightSim(dt);
     // Spin at real-world rates using elapsed time in seconds.
     if(homeSphere){
         homeSphere.rotation.y += sunRotationRadPerSecond * dt;
-        if (homeCorona && homeCorona.material && homeCorona.material.uniforms) {
-            homeCorona.material.uniforms.uTime.value = now * 0.001;
-            const pulse = 1 + Math.sin(now * 0.001 * sunVisualConfig.coronaPulseSpeed) * sunVisualConfig.coronaPulseAmplitude;
-            homeCorona.scale.setScalar(pulse);
-        }
     }
     if(pokeball){
         pokeball.rotation.y += 0.01;
     }
     if(sasCube){
-        sasCube.rotation.y += earthRotationRadPerSecond * dt;
+        earthAxialSpinOffset += earthAxialDriftRadPerSecond * dt;
+        sasCube.rotation.y = getEarthAxialRotationForDate(nowDate) + earthAxialSpinOffset;
     }
+    earthCloudLayers.forEach((cloudLayer, index) => {
+        const speedMultiplier = earthCloudLayerSpeedMultipliers[index] ?? earthCloudLayerSpeedMultipliers[0];
+        cloudLayer.rotation.y += earthRotationRadPerSecond * speedMultiplier * dt;
+    });
     if (!freecamEnabled) {
         updateTrackedCameraFollow();
     }
+    updateSpaceShipCamera();
     updateFreecamMovement(dt);
     // update controls if present
     if(controls && controls.enabled){
