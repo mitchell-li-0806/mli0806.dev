@@ -205,16 +205,37 @@ const spaceflightStationOrbitTiltRad = THREE.MathUtils.degToRad(28);
 const spaceflightStationAngularSpeed = TWO_PI / 11;
 const spaceflightOrbitPathColor = 0x8bc4ff;
 const spaceflightOrbitPathOpacity = 0.5;
-const missileSpeed = 42;
-const missileLifetimeSeconds = 7;
-const missileDamage = 220;
-const missileRadius = 0.03;
-const missileCooldownSeconds = 0.18;
+const missileLoadoutOrder = ['short', 'long'];
+const missileLoadouts = {
+    short: {
+        name: 'AIM-67 Maduro',
+        keybind: 'O',
+        speed: 84,
+        lifetimeSeconds: 8.6,
+        damage: 155,
+        radius: 0.028,
+        cooldownSeconds: 0.14,
+        color: 0xc8f4ff,
+        emissive: 0x4bb7ff
+    },
+    long: {
+        name: 'AIM-69 Khamenei',
+        keybind: 'P',
+        speed: 42,
+        lifetimeSeconds: 12.2,
+        damage: 360,
+        radius: 0.034,
+        cooldownSeconds: 0.66,
+        color: 0xffd79c,
+        emissive: 0xff8a2f
+    }
+};
 const shipMaxAmmo = 1000;
 const enemyMaxHealth = 10000;
 const enemyHitRadius = 0.9;
 const enemyHealthUIRange = 18;
-const enemyProjectileSpeed = 19;
+const enemyProjectileSpeed = 11;
+const enemyProjectileAimJitter = 0.14;
 const enemyProjectileDamageRadius = 0.085;
 const enemyFireCooldownSeconds = 0.95;
 const enemyFireRange = 22;
@@ -279,12 +300,16 @@ const enemyNavState = {
 };
 const missileGeometry = new THREE.CylinderGeometry(0.008, 0.012, 0.09, 8);
 missileGeometry.rotateX(Math.PI / 2);
-const missileMaterial = new THREE.MeshStandardMaterial({
-    color: 0xfff4b1,
-    emissive: 0xffa033,
-    emissiveIntensity: 1.2,
-    roughness: 0.2,
-    metalness: 0.1
+const missileMaterials = {};
+missileLoadoutOrder.forEach((loadoutId) => {
+    const loadout = missileLoadouts[loadoutId];
+    missileMaterials[loadoutId] = new THREE.MeshStandardMaterial({
+        color: loadout.color,
+        emissive: loadout.emissive,
+        emissiveIntensity: 1.2,
+        roughness: 0.2,
+        metalness: 0.1
+    });
 });
 const enemyProjectileGeometry = new THREE.SphereGeometry(0.018, 10, 10);
 const enemyProjectileMaterial = new THREE.MeshStandardMaterial({
@@ -306,6 +331,7 @@ let enemyAlive = true;
 let enemyEncounterActive = false;
 let shipAmmo = shipMaxAmmo;
 let missileTriggerHeld = false;
+let activeMissileLoadoutId = missileLoadoutOrder[0];
 
 const pokeballLinkPopup = document.createElement('div');
 pokeballLinkPopup.id = 'pokeball-link-popup';
@@ -411,11 +437,48 @@ simAmmoCounter.appendChild(simAmmoValue);
 simAmmoCounter.style.display = 'none';
 document.body.appendChild(simAmmoCounter);
 
+const missileInventoryUI = document.createElement('div');
+missileInventoryUI.id = 'missile-inventory-ui';
+const missileInventoryTitle = document.createElement('div');
+missileInventoryTitle.id = 'missile-inventory-title';
+missileInventoryTitle.textContent = 'MISSILES';
+const missileInventorySlots = document.createElement('div');
+missileInventorySlots.id = 'missile-inventory-slots';
+const missileSlotElements = {};
+
+missileLoadoutOrder.forEach((loadoutId) => {
+    const loadout = missileLoadouts[loadoutId];
+    const slot = document.createElement('div');
+    slot.className = 'missile-slot';
+    slot.dataset.loadoutId = loadoutId;
+
+    const slotKey = document.createElement('div');
+    slotKey.className = 'missile-slot-key';
+    slotKey.textContent = loadout.keybind;
+    const slotName = document.createElement('div');
+    slotName.className = 'missile-slot-name';
+    slotName.textContent = loadout.name;
+    const slotStats = document.createElement('div');
+    slotStats.className = 'missile-slot-stats';
+    slotStats.textContent = `DMG ${loadout.damage} | RNG ${(loadout.speed * loadout.lifetimeSeconds).toFixed(0)} | CD ${loadout.cooldownSeconds.toFixed(2)}s`;
+
+    slot.appendChild(slotKey);
+    slot.appendChild(slotName);
+    slot.appendChild(slotStats);
+    missileInventorySlots.appendChild(slot);
+    missileSlotElements[loadoutId] = slot;
+});
+
+missileInventoryUI.appendChild(missileInventoryTitle);
+missileInventoryUI.appendChild(missileInventorySlots);
+missileInventoryUI.style.display = 'none';
+document.body.appendChild(missileInventoryUI);
+
 const enemyHealthUI = document.createElement('div');
 enemyHealthUI.id = 'enemy-health-ui';
 const enemyHealthLabel = document.createElement('div');
 enemyHealthLabel.id = 'enemy-health-label';
-enemyHealthLabel.textContent = '67';
+enemyHealthLabel.textContent = 'THETA CLASS-I FREIGHTER';
 const enemyHealthTrack = document.createElement('div');
 enemyHealthTrack.id = 'enemy-health-track';
 const enemyHealthFill = document.createElement('div');
@@ -1389,6 +1452,29 @@ function updateAmmoCounter() {
     simAmmoValue.textContent = `${Math.max(0, Math.floor(shipAmmo))}`;
 }
 
+function selectMissileLoadout(loadoutId) {
+    if (!(loadoutId in missileLoadouts)) {
+        return;
+    }
+    activeMissileLoadoutId = loadoutId;
+    updateMissileInventoryUI();
+}
+
+function updateMissileInventoryUI() {
+    if (!missileInventoryUI) {
+        return;
+    }
+    if (!shipControlActive) {
+        missileInventoryUI.style.display = 'none';
+        return;
+    }
+    missileInventoryUI.style.display = 'block';
+    missileLoadoutOrder.forEach((loadoutId) => {
+        const isActive = loadoutId === activeMissileLoadoutId;
+        missileSlotElements[loadoutId].classList.toggle('active', isActive);
+    });
+}
+
 function spawnExplosion(position, color = 0xffa356, baseScale = 1) {
     const material = new THREE.MeshStandardMaterial({
         color,
@@ -1438,13 +1524,17 @@ function fireShipMissile() {
     if (shipAmmo <= 0) {
         return;
     }
+    const loadout = missileLoadouts[activeMissileLoadoutId];
+    if (!loadout) {
+        return;
+    }
 
     spaceShip.getWorldPosition(missileSpawnPos);
     spaceShip.getWorldQuaternion(shipWorldQuat);
     missileVelocityWorld.copy(shipForwardAxis).applyQuaternion(shipWorldQuat).normalize();
     missileSpawnPos.addScaledVector(missileVelocityWorld, 0.18);
 
-    const missileMesh = new THREE.Mesh(missileGeometry, missileMaterial);
+    const missileMesh = new THREE.Mesh(missileGeometry, missileMaterials[activeMissileLoadoutId]);
     missileMesh.position.copy(missileSpawnPos);
     missileMesh.quaternion.copy(shipWorldQuat);
     missileMesh.userData.projectId = 'spaceflight-sim-3d';
@@ -1452,10 +1542,12 @@ function fireShipMissile() {
 
     missiles.push({
         mesh: missileMesh,
-        life: missileLifetimeSeconds,
-        velocity: missileVelocityWorld.clone().multiplyScalar(missileSpeed)
+        life: loadout.lifetimeSeconds,
+        velocity: missileVelocityWorld.clone().multiplyScalar(loadout.speed),
+        damage: loadout.damage,
+        radius: loadout.radius
     });
-    missileCooldownTimer = missileCooldownSeconds;
+    missileCooldownTimer = loadout.cooldownSeconds;
     shipAmmo -= 1;
 }
 
@@ -1487,10 +1579,10 @@ function updateMissiles(dt) {
         }
 
         missileEnemyDelta.subVectors(missile.mesh.position, enemyOrbitPos);
-        const hitRadius = enemyHitRadius + missileRadius;
+        const hitRadius = enemyHitRadius + missile.radius;
         if (missileEnemyDelta.lengthSq() <= hitRadius * hitRadius) {
             spawnExplosion(missile.mesh.position, 0xffb56f, 0.8);
-            enemyHealth = Math.max(0, enemyHealth - missileDamage);
+            enemyHealth = Math.max(0, enemyHealth - missile.damage);
             scene.remove(missile.mesh);
             missiles.splice(i, 1);
 
@@ -1520,6 +1612,10 @@ function fireEnemyProjectile() {
     }
 
     const shotDir = enemyToShipDelta.normalize();
+    shotDir.x += (Math.random() - 0.5) * enemyProjectileAimJitter;
+    shotDir.y += (Math.random() - 0.5) * enemyProjectileAimJitter;
+    shotDir.z += (Math.random() - 0.5) * enemyProjectileAimJitter;
+    shotDir.normalize();
     const projectile = new THREE.Mesh(enemyProjectileGeometry, enemyProjectileMaterial);
     projectile.position.copy(enemyOrbitPos).addScaledVector(shotDir, 1.7);
     scene.add(projectile);
@@ -1621,6 +1717,7 @@ function activateSpaceflightControl() {
     if (document.pointerLockElement !== renderer.domElement && renderer.domElement.requestPointerLock) {
         renderer.domElement.requestPointerLock();
     }
+    updateMissileInventoryUI();
 }
 
 function deactivateSpaceflightControl() {
@@ -1640,6 +1737,7 @@ function deactivateSpaceflightControl() {
     if (document.pointerLockElement === renderer.domElement && document.exitPointerLock) {
         document.exitPointerLock();
     }
+    updateMissileInventoryUI();
 }
 
 function getDockDistanceToShip() {
@@ -2503,6 +2601,18 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
+    if (shipControlActive && e.code === 'KeyO') {
+        e.preventDefault();
+        selectMissileLoadout('short');
+        return;
+    }
+
+    if (shipControlActive && e.code === 'KeyP') {
+        e.preventDefault();
+        selectMissileLoadout('long');
+        return;
+    }
+
     if (shipControlActive && e.code === 'KeyM') {
         e.preventDefault();
         missileTriggerHeld = true;
@@ -2666,6 +2776,7 @@ function updateSpaceflightSim(dt) {
     updateExplosions(dt);
     updateEnemyHealthUI();
     updateAmmoCounter();
+    updateMissileInventoryUI();
     updateThrottleMeter();
     updateSpeedometer();
 }
