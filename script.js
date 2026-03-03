@@ -45,6 +45,7 @@ let shipEngineGlowMaterial = null;
 let shipControlActive = false;
 let shipDocked = true;
 let shipAutoDockActive = false;
+let shipAutopilotActive = false;
 const earthCloudLayers = [];
 let earthTiltGroup = null;
 let orbitPathGroup = null;
@@ -66,7 +67,7 @@ let trackedFollowInitialized = false;
 const shipControlState = {
     KeyW: false,
     KeyS: false,
-    Space: false,
+    KeyR: false,
     ShiftLeft: false
 };
 const shipVelocity = new THREE.Vector3();
@@ -207,11 +208,11 @@ const spaceflightStationOrbitTiltRad = THREE.MathUtils.degToRad(28);
 const spaceflightStationAngularSpeed = TWO_PI / 11;
 const spaceflightOrbitPathColor = 0x8bc4ff;
 const spaceflightOrbitPathOpacity = 0.5;
-const missileLoadoutOrder = ['short', 'long'];
+const missileLoadoutOrder = ['short', 'long','homing'];
 const missileLoadouts = {
     short: {
         name: 'AIM-67 Maduro',
-        keybind: 'O',
+        keybind: 'I',
         speed: 84,
         lifetimeSeconds: 8.6,
         damage: 155,
@@ -222,7 +223,7 @@ const missileLoadouts = {
     },
     long: {
         name: 'AIM-69 Khamenei',
-        keybind: 'P',
+        keybind: 'O',
         speed: 42,
         lifetimeSeconds: 12.2,
         damage: 360,
@@ -230,6 +231,19 @@ const missileLoadouts = {
         cooldownSeconds: 0.66,
         color: 0xffd79c,
         emissive: 0xff8a2f
+    },
+    homing: {
+        name: 'AIM-121 Kim Jong Un',
+        keybind: 'P',
+        speed: 64,
+        lifetimeSeconds: 5.4,
+        damage: 1600,
+        radius: 0.034,
+        cooldownSeconds: 5,
+        color: 0xffd79c,
+        emissive: 0xff8a2f,
+        isHoming: true,
+        turnRateRadPerSec: 1.5
     }
 };
 const shipMaxAmmo = 1000;
@@ -243,11 +257,12 @@ const enemyFireCooldownSeconds = 0.95;
 const enemyFireRange = 22;
 const enemyProjectileLifetimeSeconds = 8;
 const shipAcceleration = 7.2;
+const shipReverseMultiplier = 3.5;
 const shipBoostMultiplier = 2.35;
 const shipDragPerSecond = 0.012;
 const shipLowThrottleDragPerSecond = 0.95;
 const shipBrakeDragPerSecond = 2.2;
-const shipMaxSpeed = 34;
+const shipMaxSpeed = 60;
 const shipMouseYawSensitivity = 0.0009;
 const shipMousePitchSensitivity = 0.00075;
 const shipTurnImpulseGain = 16;
@@ -289,6 +304,9 @@ const enemyOrbitPos = new THREE.Vector3();
 const enemyOrbitLookPos = new THREE.Vector3();
 const enemyOrbitCenter = new THREE.Vector3();
 const enemyPathTarget = new THREE.Vector3();
+const enemyVelocity = new THREE.Vector3();
+const enemySteering = new THREE.Vector3();
+const enemyAcceleration = 2.5;
 const missileSpawnPos = new THREE.Vector3();
 const missileVelocityWorld = new THREE.Vector3();
 const missileEnemyDelta = new THREE.Vector3();
@@ -300,6 +318,8 @@ const enemyNavState = {
     speed: 7.2,
     arrivalThreshold: 0.8
 };
+const enemyCollisionAvoidanceRadius = 3.0;
+const enemyTurnSpeed = 0.8;
 const missileGeometry = new THREE.CylinderGeometry(0.008, 0.012, 0.09, 8);
 missileGeometry.rotateX(Math.PI / 2);
 const missileMaterials = {};
@@ -411,7 +431,7 @@ const simThrottleMeter = document.createElement('div');
 simThrottleMeter.id = 'sim-throttle-meter';
 const simThrottleLabel = document.createElement('div');
 simThrottleLabel.className = 'sim-meter-label';
-simThrottleLabel.textContent = 'THROTTLE';
+    simThrottleLabel.textContent = 'THROTTLE'; 
 const simThrottleTrack = document.createElement('div');
 simThrottleTrack.className = 'sim-meter-track';
 const simThrottleFill = document.createElement('div');
@@ -440,6 +460,20 @@ simAmmoCounter.appendChild(simAmmoLabel);
 simAmmoCounter.appendChild(simAmmoValue);
 simAmmoCounter.style.display = 'none';
 document.body.appendChild(simAmmoCounter);
+
+const simAutopilotIndicator = document.createElement('div');
+simAutopilotIndicator.id = 'sim-autopilot-indicator';
+const simAutopilotLabel = document.createElement('div');
+simAutopilotLabel.className = 'sim-meter-label';
+simAutopilotLabel.textContent = 'AUTOPILOT';
+const simAutopilotValue = document.createElement('div');
+simAutopilotValue.id = 'sim-autopilot-value';
+simAutopilotValue.className = 'sim-meter-numerals';
+simAutopilotValue.textContent = 'OFF';
+simAutopilotIndicator.appendChild(simAutopilotLabel);
+simAutopilotIndicator.appendChild(simAutopilotValue);
+simAutopilotIndicator.style.display = 'none';
+document.body.appendChild(simAutopilotIndicator);
 
 const missileInventoryUI = document.createElement('div');
 missileInventoryUI.id = 'missile-inventory-ui';
@@ -1088,151 +1122,87 @@ function createSpaceflightSimDisplay() {
     spaceShip.position.copy(shipDockOffset);
     spaceStation.add(spaceShip);
 
-    const shipHullMaterial = new THREE.MeshStandardMaterial({ color: 0xeaf2ff, roughness: 0.38, metalness: 0.7 });
-    const shipDarkMaterial = new THREE.MeshStandardMaterial({ color: 0x4f5f78, roughness: 0.46, metalness: 0.6 });
-    const shipAccentMaterial = new THREE.MeshStandardMaterial({ color: 0x7ca7ff, roughness: 0.32, metalness: 0.4 });
-    const shipGlassMaterial = new THREE.MeshStandardMaterial({
-        color: 0xa8d8ff,
-        emissive: 0x5ea5ff,
-        emissiveIntensity: 0.16,
-        transparent: true,
-        opacity: 0.78,
-        roughness: 0.1,
-        metalness: 0.2
-    });
+    const hullMat = new THREE.MeshStandardMaterial({ color: 0xeaf2ff, roughness: 0.4, metalness: 0.6 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x2a3342, roughness: 0.6, metalness: 0.4 });
+    const accentMat = new THREE.MeshStandardMaterial({ color: 0x3d8eff, roughness: 0.4, metalness: 0.5 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0x88ccee, roughness: 0.1, metalness: 0.9, transparent: true, opacity: 0.7 });
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0x44aaff });
 
-    const shipBody = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.024, 0.034, 0.22, 16),
-        shipHullMaterial
-    );
-    shipBody.rotation.x = Math.PI / 2;
-    shipBody.userData.projectId = 'spaceflight-sim-3d';
-    spaceShip.add(shipBody);
-    objects.push(shipBody);
+    // Main Fuselage
+    const fuselage = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.035, 0.24), hullMat);
+    fuselage.position.z = 0.02;
+    fuselage.userData.projectId = 'spaceflight-sim-3d';
+    spaceShip.add(fuselage);
+    objects.push(fuselage);
 
-    const shipSpine = new THREE.Mesh(
-        new THREE.BoxGeometry(0.018, 0.026, 0.19),
-        shipDarkMaterial
-    );
-    shipSpine.position.set(0, 0.013, 0.01);
-    shipSpine.userData.projectId = 'spaceflight-sim-3d';
-    spaceShip.add(shipSpine);
-    objects.push(shipSpine);
+    // Nose
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.08, 4), hullMat);
+    nose.rotation.x = -Math.PI / 2;
+    nose.rotation.y = Math.PI / 4; // Diamond profile
+    nose.position.z = -0.14;
+    nose.userData.projectId = 'spaceflight-sim-3d';
+    spaceShip.add(nose);
+    objects.push(nose);
 
-    const shipNose = new THREE.Mesh(
-        new THREE.ConeGeometry(0.026, 0.07, 14),
-        shipHullMaterial
-    );
-    shipNose.position.z = -0.11;
-    shipNose.rotation.x = Math.PI / 2;
-    shipNose.userData.projectId = 'spaceflight-sim-3d';
-    spaceShip.add(shipNose);
-    objects.push(shipNose);
+    // Cockpit
+    const cockpit = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.025, 0.08), glassMat);
+    cockpit.position.set(0, 0.02, -0.02);
+    cockpit.userData.projectId = 'spaceflight-sim-3d';
+    spaceShip.add(cockpit);
+    objects.push(cockpit);
 
-    const shipCanopy = new THREE.Mesh(
-        new THREE.SphereGeometry(0.018, 14, 10),
-        shipGlassMaterial
-    );
-    shipCanopy.position.set(0, 0.018, -0.06);
-    shipCanopy.scale.set(1.15, 0.75, 1.65);
-    shipCanopy.userData.projectId = 'spaceflight-sim-3d';
-    spaceShip.add(shipCanopy);
-    objects.push(shipCanopy);
+    // Wings
+    const wingGeom = new THREE.BoxGeometry(0.18, 0.01, 0.08);
+    const wings = new THREE.Mesh(wingGeom, hullMat);
+    wings.position.set(0, 0, 0.04);
+    wings.userData.projectId = 'spaceflight-sim-3d';
+    spaceShip.add(wings);
+    objects.push(wings);
 
-    const shipWingGeometry = new THREE.BoxGeometry(0.15, 0.01, 0.06);
-    const shipWingMaterial = shipAccentMaterial;
-    const shipWing = new THREE.Mesh(shipWingGeometry, shipWingMaterial);
-    shipWing.position.set(0, -0.014, 0.005);
-    shipWing.userData.projectId = 'spaceflight-sim-3d';
-    spaceShip.add(shipWing);
-    objects.push(shipWing);
+    // Wing tips
+    const finGeom = new THREE.BoxGeometry(0.005, 0.06, 0.06);
+    const leftFin = new THREE.Mesh(finGeom, accentMat);
+    leftFin.position.set(-0.09, 0.02, 0.04);
+    leftFin.userData.projectId = 'spaceflight-sim-3d';
+    spaceShip.add(leftFin);
+    objects.push(leftFin);
+    const rightFin = leftFin.clone();
+    rightFin.position.set(0.09, 0.02, 0.04);
+    rightFin.userData.projectId = 'spaceflight-sim-3d';
+    spaceShip.add(rightFin);
+    objects.push(rightFin);
 
-    const shipPodGeometry = new THREE.CylinderGeometry(0.012, 0.012, 0.11, 12);
-    [-0.04, 0.04].forEach((xPosition) => {
-        const pod = new THREE.Mesh(shipPodGeometry, shipDarkMaterial);
-        pod.rotation.x = Math.PI / 2;
-        pod.position.set(xPosition, -0.008, 0.02);
-        pod.userData.projectId = 'spaceflight-sim-3d';
-        spaceShip.add(pod);
-        objects.push(pod);
-    });
+    // Engines
+    const engineGeom = new THREE.CylinderGeometry(0.015, 0.02, 0.12, 12);
+    engineGeom.rotateX(Math.PI / 2);
+    const leftEngine = new THREE.Mesh(engineGeom, darkMat);
+    leftEngine.position.set(-0.05, -0.01, 0.06);
+    leftEngine.userData.projectId = 'spaceflight-sim-3d';
+    spaceShip.add(leftEngine);
+    objects.push(leftEngine);
+    const rightEngine = leftEngine.clone();
+    rightEngine.position.set(0.05, -0.01, 0.06);
+    rightEngine.userData.projectId = 'spaceflight-sim-3d';
+    spaceShip.add(rightEngine);
+    objects.push(rightEngine);
 
-    const shipFinGeometry = new THREE.BoxGeometry(0.012, 0.042, 0.05);
-    [-0.046, 0.046].forEach((xPosition) => {
-        const fin = new THREE.Mesh(shipFinGeometry, shipDarkMaterial);
-        fin.position.set(xPosition, -0.005, 0.078);
-        fin.userData.projectId = 'spaceflight-sim-3d';
-        spaceShip.add(fin);
-        objects.push(fin);
-    });
-
-    const shipEngineGeometry = new THREE.CylinderGeometry(0.015, 0.02, 0.046, 12);
-    const shipEngineSideGeometry = new THREE.CylinderGeometry(0.01, 0.014, 0.036, 10);
-    const shipEngine = new THREE.Mesh(shipEngineGeometry, shipDarkMaterial);
-    shipEngine.position.z = 0.108;
-    shipEngine.rotation.x = Math.PI / 2;
-    shipEngine.userData.projectId = 'spaceflight-sim-3d';
-    const shipEngineLeft = new THREE.Mesh(shipEngineSideGeometry, shipDarkMaterial);
-    shipEngineLeft.position.set(-0.022, -0.004, 0.1);
-    shipEngineLeft.rotation.x = Math.PI / 2;
-    shipEngineLeft.userData.projectId = 'spaceflight-sim-3d';
-    const shipEngineRight = shipEngineLeft.clone();
-    shipEngineRight.position.x = 0.022;
-    shipEngineRight.userData.projectId = 'spaceflight-sim-3d';
-    spaceShip.add(shipEngine, shipEngineLeft, shipEngineRight);
-    objects.push(shipEngine, shipEngineLeft, shipEngineRight);
-
-    const shipEngineGlow = new THREE.Mesh(
-        new THREE.SphereGeometry(0.012, 12, 12),
-        new THREE.MeshStandardMaterial({
-            color: 0x89c7ff,
-            emissive: 0x89c7ff,
-            emissiveIntensity: 0,
-            transparent: true,
-            opacity: 0.35
-        })
-    );
-    shipEngineGlow.position.set(0, 0, 0.136);
+    // Engine Glows
+    const glowGeom = new THREE.CircleGeometry(0.016, 12);
+    const shipEngineGlow = new THREE.Mesh(glowGeom, glowMat);
+    shipEngineGlow.position.set(-0.05, -0.01, 0.121);
     shipEngineGlow.userData.projectId = 'spaceflight-sim-3d';
     spaceShip.add(shipEngineGlow);
-    shipEngineGlowMaterial = shipEngineGlow.material;
+    shipEngineGlowMaterial = glowMat;
     objects.push(shipEngineGlow);
 
-    const shipSideGlowGeometry = new THREE.SphereGeometry(0.007, 10, 10);
-    const shipSideGlowMaterial = new THREE.MeshStandardMaterial({
-        color: 0x89c7ff,
-        emissive: 0x89c7ff,
-        emissiveIntensity: 0.32,
-        transparent: true,
-        opacity: 0.32
-    });
-    const shipSideGlowLeft = new THREE.Mesh(shipSideGlowGeometry, shipSideGlowMaterial);
-    shipSideGlowLeft.position.set(-0.022, -0.004, 0.126);
-    shipSideGlowLeft.userData.projectId = 'spaceflight-sim-3d';
-    const shipSideGlowRight = shipSideGlowLeft.clone();
-    shipSideGlowRight.position.x = 0.022;
-    shipSideGlowRight.userData.projectId = 'spaceflight-sim-3d';
-    spaceShip.add(shipSideGlowLeft, shipSideGlowRight);
-    objects.push(shipSideGlowLeft, shipSideGlowRight);
-
-    const shipAntenna = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.0022, 0.0022, 0.045, 8),
-        shipDarkMaterial
-    );
-    shipAntenna.position.set(0, 0.032, -0.02);
-    shipAntenna.rotation.x = Math.PI / 12;
-    shipAntenna.userData.projectId = 'spaceflight-sim-3d';
-    const shipAntennaTip = new THREE.Mesh(
-        new THREE.SphereGeometry(0.0042, 10, 10),
-        shipAccentMaterial
-    );
-    shipAntennaTip.position.set(0, 0.053, -0.03);
-    shipAntennaTip.userData.projectId = 'spaceflight-sim-3d';
-    spaceShip.add(shipAntenna, shipAntennaTip);
-    objects.push(shipAntenna, shipAntennaTip);
+    const rightGlow = shipEngineGlow.clone();
+    rightGlow.position.set(0.05, -0.01, 0.121);
+    rightGlow.userData.projectId = 'spaceflight-sim-3d';
+    spaceShip.add(rightGlow);
+    objects.push(rightGlow);
 
     shipEngineLight = new THREE.PointLight(0x7ec2ff, 0, 1.2, 2);
-    shipEngineLight.position.set(0, 0, 0.145);
+    shipEngineLight.position.set(0, 0, 0.15);
     spaceShip.add(shipEngineLight);
 
     const orbitPoints = [];
@@ -1261,83 +1231,66 @@ function createEnemyThetaClassI() {
     enemyThetaClassI = new THREE.Group();
     enemyThetaClassI.name = 'Enemy ThetaClassI';
 
-    const hullMaterial = new THREE.MeshStandardMaterial({ color: 0x6a707d, roughness: 0.42, metalness: 0.76 });
-    const armorMaterial = new THREE.MeshStandardMaterial({ color: 0x3d4452, roughness: 0.55, metalness: 0.64 });
-    const lightMaterial = new THREE.MeshStandardMaterial({
-        color: 0xff8e47,
-        emissive: 0xff5f21,
-        emissiveIntensity: 0.68,
-        roughness: 0.22,
-        metalness: 0.16
-    });
-    const panelMaterial = new THREE.MeshStandardMaterial({
-        color: 0x384d7f,
-        emissive: 0x1b2f54,
-        emissiveIntensity: 0.34,
-        roughness: 0.46,
-        metalness: 0.4
-    });
+    const hullMat = new THREE.MeshStandardMaterial({ color: 0x556677, roughness: 0.7 });
+    const containerMat = new THREE.MeshStandardMaterial({ color: 0xcc8833, roughness: 0.8 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 });
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
 
-    const hull = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 2.4, 20), hullMaterial);
-    hull.rotation.z = Math.PI / 2;
-    enemyThetaClassI.add(hull);
-    const hullFrontCap = new THREE.Mesh(new THREE.SphereGeometry(0.45, 18, 14), hullMaterial);
-    hullFrontCap.position.x = 1.2;
-    enemyThetaClassI.add(hullFrontCap);
-    const hullRearCap = hullFrontCap.clone();
-    hullRearCap.position.x = -1.2;
-    enemyThetaClassI.add(hullRearCap);
-
-    const spine = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.24, 0.24), armorMaterial);
-    spine.position.y = 0.2;
+    // Spine
+    const spine = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 3.0), hullMat);
     enemyThetaClassI.add(spine);
 
-    const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.22, 0.34), hullMaterial);
-    bridge.position.set(0.74, 0.42, 0);
-    enemyThetaClassI.add(bridge);
+    // Bridge (Hammerhead)
+    const bridgeNeck = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.6), hullMat);
+    bridgeNeck.position.z = 1.7;
+    enemyThetaClassI.add(bridgeNeck);
 
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.62, 12), armorMaterial);
-    nose.position.x = 1.48;
-    nose.rotation.z = -Math.PI / 2;
-    enemyThetaClassI.add(nose);
+    const bridgeHead = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.3, 0.4), hullMat);
+    bridgeHead.position.set(0, 0.1, 2.0);
+    enemyThetaClassI.add(bridgeHead);
 
-    const engineBlock = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.42, 0.54), armorMaterial);
-    engineBlock.position.x = -1.36;
+    const bridgeWindow = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.15, 0.05), glowMat);
+    bridgeWindow.position.set(0, 0.1, 2.21);
+    enemyThetaClassI.add(bridgeWindow);
+
+    // Cargo Containers
+    const containerGeom = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+    for (let i = 0; i < 3; i++) {
+        const z = 1.0 - i * 1.0;
+        const leftC = new THREE.Mesh(containerGeom, containerMat);
+        leftC.position.set(-0.7, 0, z);
+        enemyThetaClassI.add(leftC);
+
+        const rightC = new THREE.Mesh(containerGeom, containerMat);
+        rightC.position.set(0.7, 0, z);
+        enemyThetaClassI.add(rightC);
+    }
+
+    // Engines
+    const engineBlock = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.8, 0.6), darkMat);
+    engineBlock.position.z = -1.8;
     enemyThetaClassI.add(engineBlock);
 
-    [-0.19, 0, 0.19].forEach((zPos) => {
-        const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.22, 14), armorMaterial);
-        nozzle.position.set(-1.64, -0.03, zPos);
-        nozzle.rotation.z = Math.PI / 2;
+    const nozzleGeom = new THREE.CylinderGeometry(0.2, 0.25, 0.4, 16);
+    nozzleGeom.rotateX(Math.PI / 2);
+
+    const positions = [
+        [-0.3, 0.2], [0.3, 0.2],
+        [-0.3, -0.2], [0.3, -0.2]
+    ];
+
+    positions.forEach(pos => {
+        const nozzle = new THREE.Mesh(nozzleGeom, darkMat);
+        nozzle.position.set(pos[0], pos[1], -2.1);
         enemyThetaClassI.add(nozzle);
 
-        const plume = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 10), lightMaterial);
-        plume.position.set(-1.76, -0.03, zPos);
-        enemyThetaClassI.add(plume);
+        const glow = new THREE.Mesh(new THREE.CircleGeometry(0.15, 16), glowMat);
+        glow.position.set(pos[0], pos[1], -2.31);
+        glow.rotation.y = Math.PI;
+        enemyThetaClassI.add(glow);
     });
 
-    [-0.72, 0.72].forEach((zPos) => {
-        const wing = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.06, 0.36), armorMaterial);
-        wing.position.set(0.02, 0, zPos);
-        enemyThetaClassI.add(wing);
-
-        const wingPanel = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.028, 0.26), panelMaterial);
-        wingPanel.position.set(0.02, 0.04, zPos);
-        enemyThetaClassI.add(wingPanel);
-    });
-
-    [0.2, 0.65, 1.1].forEach((xPos) => {
-        const turretBase = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.08, 0.06, 12), armorMaterial);
-        turretBase.position.set(xPos, 0.3, 0);
-        enemyThetaClassI.add(turretBase);
-
-        const turretBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.24, 10), armorMaterial);
-        turretBarrel.position.set(xPos + 0.13, 0.3, 0);
-        turretBarrel.rotation.z = Math.PI / 2;
-        enemyThetaClassI.add(turretBarrel);
-    });
-
-    enemyThetaClassI.scale.setScalar(0.9);
+    enemyThetaClassI.scale.setScalar(0.6);
     enemyThetaClassI.visible = false;
     scene.add(enemyThetaClassI);
 }
@@ -1361,6 +1314,25 @@ function getRandomEnemyPathPoint(target) {
     return target;
 }
 
+function isPathIntersectingSun(startPoint, endPoint, sunRadius) {
+    // Checks if the line segment from startPoint to endPoint intersects a sphere at the origin with sunRadius.
+    const d = new THREE.Vector3().subVectors(endPoint, startPoint);
+    const lenSq = d.lengthSq();
+    if (lenSq === 0) {
+        // Start and end points are the same.
+        return startPoint.lengthSq() < sunRadius * sunRadius;
+    }
+
+    // Find t for the point on the line closest to the origin, clamped to the segment [0, 1].
+    const t = Math.max(0, Math.min(1, -startPoint.dot(d) / lenSq));
+
+    // Get the closest point on the segment to the origin.
+    const closestPoint = new THREE.Vector3().copy(startPoint).addScaledVector(d, t);
+
+    // Check if the squared distance to that point is less than the squared radius.
+    return closestPoint.lengthSq() < sunRadius * sunRadius;
+}
+
 function setEnemyEncounterActive(active) {
     enemyEncounterActive = active;
     if (!enemyThetaClassI) {
@@ -1368,6 +1340,7 @@ function setEnemyEncounterActive(active) {
     }
 
     if (!active || !enemyAlive) {
+        enemyVelocity.set(0, 0, 0);
         enemyThetaClassI.visible = false;
         enemyPathTarget.set(0, 0, 0);
         for (let i = missiles.length - 1; i >= 0; i -= 1) {
@@ -1392,6 +1365,7 @@ function setEnemyEncounterActive(active) {
     if (enemyPathTarget.lengthSq() === 0) {
         getRandomEnemyPathPoint(enemyOrbitPos);
         enemyThetaClassI.position.copy(enemyOrbitPos);
+        enemyVelocity.set(0, 0, 0);
         getRandomEnemyPathPoint(enemyPathTarget);
     }
 }
@@ -1400,26 +1374,50 @@ function updateEnemyThetaClassI(dt) {
     if (!enemyThetaClassI || !enemyAlive || !homeSphere || !enemyEncounterActive) {
         return;
     }
-    if (enemyPathTarget.lengthSq() === 0) {
-        getRandomEnemyPathPoint(enemyPathTarget);
+
+    const distToTarget = enemyThetaClassI.position.distanceTo(enemyPathTarget);
+    if (enemyPathTarget.lengthSq() === 0 || distToTarget <= enemyNavState.arrivalThreshold * 4) {
+        let newTarget;
+        let pathIsValid = false;
+        let attempts = 0;
+        const maxAttempts = 20;
+
+        while (!pathIsValid && attempts < maxAttempts) {
+            newTarget = getRandomEnemyPathPoint(new THREE.Vector3());
+            // Ensure the new path doesn't go through the sun
+            if (!isPathIntersectingSun(enemyThetaClassI.position, newTarget, enemyCollisionAvoidanceRadius)) {
+                pathIsValid = true;
+            }
+            attempts++;
+        }
+
+        if (newTarget) {
+            enemyPathTarget.copy(newTarget);
+        }
     }
 
-    enemyOrbitPos.copy(enemyPathTarget).sub(enemyThetaClassI.position);
-    const distanceToTarget = enemyOrbitPos.length();
-    if (distanceToTarget <= enemyNavState.arrivalThreshold) {
-        getRandomEnemyPathPoint(enemyPathTarget);
-        enemyOrbitPos.copy(enemyPathTarget).sub(enemyThetaClassI.position);
+    // Physics-based movement (Reynolds Steering)
+    enemySteering.subVectors(enemyPathTarget, enemyThetaClassI.position).normalize();
+    enemySteering.multiplyScalar(enemyNavState.speed); // Desired velocity
+    enemySteering.sub(enemyVelocity); // Steering force = Desired - Current
+    
+    // Apply acceleration limit
+    enemySteering.clampLength(0, enemyAcceleration * dt);
+    enemyVelocity.add(enemySteering);
+
+    // Cap speed
+    if (enemyVelocity.lengthSq() > enemyNavState.speed * enemyNavState.speed) {
+        enemyVelocity.setLength(enemyNavState.speed);
     }
 
-    const moveDistance = Math.min(enemyNavState.speed * dt, enemyOrbitPos.length());
-    if (moveDistance > 0) {
-        enemyOrbitPos.normalize();
-        enemyThetaClassI.position.addScaledVector(enemyOrbitPos, moveDistance);
-        enemyOrbitLookPos.copy(enemyThetaClassI.position).addScaledVector(enemyOrbitPos, 1.2);
-    } else {
-        enemyOrbitLookPos.copy(enemyPathTarget);
-    }
-    enemyThetaClassI.lookAt(enemyOrbitLookPos);
+    enemyThetaClassI.position.addScaledVector(enemyVelocity, dt);
+
+    // Smoothly turn to face velocity
+    const targetLookPos = enemyThetaClassI.position.clone().add(enemyVelocity);
+    const dummy = new THREE.Object3D();
+    dummy.position.copy(enemyThetaClassI.position);
+    dummy.lookAt(targetLookPos);
+    enemyThetaClassI.quaternion.slerp(dummy.quaternion, dt * 2.0);
 }
 
 function updateEnemyHealthUI() {
@@ -1554,7 +1552,9 @@ function fireShipMissile() {
         life: loadout.lifetimeSeconds,
         velocity: missileVelocityWorld.clone().multiplyScalar(loadout.speed),
         damage: loadout.damage,
-        radius: loadout.radius
+        radius: loadout.radius,
+        isHoming: !!loadout.isHoming,
+        turnRate: loadout.turnRateRadPerSec || 0
     });
     missileCooldownTimer = loadout.cooldownSeconds;
     shipAmmo -= 1;
@@ -1575,6 +1575,37 @@ function updateMissiles(dt) {
     for (let i = missiles.length - 1; i >= 0; i -= 1) {
         const missile = missiles[i];
         missile.life -= dt;
+
+        if (missile.isHoming && missile.turnRate > 0 && enemyAlive && enemyEncounterActive) {
+            const targetDir = missileEnemyDelta.subVectors(enemyOrbitPos, missile.mesh.position).normalize();
+            const currentDir = missile.velocity.clone().normalize();
+            const dot = currentDir.dot(targetDir);
+
+            if (dot < 0.9999) {
+                const rotationAxis = new THREE.Vector3();
+                if (dot < -0.9999) {
+                    if (Math.abs(currentDir.x) < 0.9) {
+                        rotationAxis.set(1, 0, 0);
+                    } else {
+                        rotationAxis.set(0, 1, 0);
+                    }
+                    rotationAxis.cross(currentDir).normalize();
+                } else {
+                    rotationAxis.crossVectors(currentDir, targetDir).normalize();
+                }
+
+                const rotationAngle = Math.acos(THREE.MathUtils.clamp(dot, -1, 1));
+                const maxAngle = missile.turnRate * dt;
+                const turnAngle = Math.min(rotationAngle, maxAngle);
+
+                if (turnAngle > 1e-6) {
+                    const turnQuat = new THREE.Quaternion().setFromAxisAngle(rotationAxis, turnAngle);
+                    missile.velocity.applyQuaternion(turnQuat);
+                    missile.mesh.quaternion.premultiply(turnQuat);
+                }
+            }
+        }
+
         missile.mesh.position.addScaledVector(missile.velocity, dt);
 
         if (missile.life <= 0) {
@@ -1587,7 +1618,7 @@ function updateMissiles(dt) {
             continue;
         }
 
-        missileEnemyDelta.subVectors(missile.mesh.position, enemyOrbitPos);
+        missileEnemyDelta.subVectors(enemyOrbitPos, missile.mesh.position);
         const hitRadius = enemyHitRadius + missile.radius;
         if (missileEnemyDelta.lengthSq() <= hitRadius * hitRadius) {
             spawnExplosion(missile.mesh.position, 0xffb56f, 0.8);
@@ -1735,6 +1766,7 @@ function deactivateSpaceflightControl() {
     }
     shipControlActive = false;
     shipAutoDockActive = false;
+    shipAutopilotActive = false;
     missileTriggerHeld = false;
     shipVelocity.multiplyScalar(0.94);
     resetShipControlState();
@@ -1769,6 +1801,7 @@ function completeShipDocking() {
     shipVelocity.set(0, 0, 0);
     shipDocked = true;
     shipAutoDockActive = false;
+    shipAutopilotActive = false;
     shipAmmo = shipMaxAmmo;
     shipUndockCollisionGraceTimer = 0;
     resetShipTurnState();
@@ -1794,6 +1827,7 @@ function triggerShipCrash() {
     shipCrashed = true;
     missileTriggerHeld = false;
     shipAutoDockActive = false;
+    shipAutopilotActive = false;
     shipVelocity.set(0, 0, 0);
     shipThrottleCommand = 0;
     shipThrottleLevel = 0;
@@ -1924,8 +1958,12 @@ function updateThrottleMeter() {
     }
 
     simThrottleMeter.style.display = 'block';
-    const percent = Math.round(THREE.MathUtils.clamp(shipThrottleCommand, 0, 1) * 100);
-    simThrottleFill.style.width = `${percent}%`;
+    const effectiveThrottle = getEffectiveThrottle();
+    const isReversing = effectiveThrottle < 0;
+    simThrottleLabel.textContent = isReverseThrottleActive() ? 'REVERSE' : 'THROTTLE';
+    const percent = Math.round(Math.abs(shipThrottleCommand) * 100);
+        simThrottleFill.style.width = `${percent}%`;
+        simThrottleFill.style.background = isReversing ? 'linear-gradient(90deg, #808080 0%, #808080 100%)' : 'linear-gradient(90deg, #ffffff 0%, #ffffff 100%)';
     simThrottleValue.textContent = `${percent}%`;
 }
 
@@ -1958,8 +1996,76 @@ function updateSpeedometer() {
     simSpeedValue.textContent = speed.toFixed(2);
 }
 
+function updateAutopilotIndicator() {
+    if (!shipControlActive) {
+        simAutopilotIndicator.style.display = 'none';
+        return;
+    }
+
+    simAutopilotIndicator.style.display = 'block';
+    if (shipAutopilotActive) {
+        simAutopilotValue.textContent = 'ON';
+        simAutopilotValue.style.color = '#64ff64';
+        simAutopilotValue.style.textShadow = '0 0 8px rgba(100, 255, 100, 0.4)';
+    } else {
+        simAutopilotValue.textContent = 'OFF';
+        simAutopilotValue.style.color = '#ffffff';
+        simAutopilotValue.style.textShadow = '0 0 8px rgba(120, 200, 255, 0.4)';
+    }
+}
+
 function adjustManualThrottle(delta) {
-    shipThrottleCommand = THREE.MathUtils.clamp(shipThrottleCommand + delta, 0, 1);
+    shipThrottleCommand = THREE.MathUtils.clamp(shipThrottleCommand + delta, -1, 1);
+}
+
+function isReverseThrottleActive() {
+    return shipControlState.KeyR;
+}
+
+function getEffectiveThrottle() {
+    let thrust = shipThrottleCommand;
+    if (isReverseThrottleActive()) {
+        // If reverse is active, apply throttle magnitude in the negative direction.
+        thrust = -Math.abs(shipThrottleCommand);
+    }
+    return thrust;
+}
+
+function updateShipAutopilot(dt) {
+    // When active, this function overrides player controls to navigate to the station.
+    if (getDockDistanceToShip() < shipLatchRange) {
+        attemptShipRelatch();
+        return; // Auto-latch initiated, let auto-dock handler take over.
+    }
+
+    // Get target position (docking port) in world space.
+    shipDockWorldPos.copy(shipDockOffset);
+    spaceStation.localToWorld(shipDockWorldPos);
+
+    // Get target position in ship's parent's local space for correct lookAt.
+    const targetPosLocal = spaceShip.parent.worldToLocal(shipDockWorldPos.clone());
+
+    // Steer towards target by slerping the ship's quaternion.
+    const targetLookQuat = new THREE.Quaternion();
+    const lookAtMatrix = new THREE.Matrix4().lookAt(spaceShip.position, targetPosLocal, shipUpAxis);
+    targetLookQuat.setFromRotationMatrix(lookAtMatrix);
+    spaceShip.quaternion.slerp(targetLookQuat, dt * 2.0); // Slerp speed can be adjusted.
+
+    // Reset any player turning input to prevent interference.
+    shipPendingYaw = 0;
+    shipPendingPitch = 0;
+    shipAngularVelocity.set(0, 0);
+
+    // Set throttle based on alignment with the target.
+    const shipForward = new THREE.Vector3(0, 0, -1).applyQuaternion(spaceShip.quaternion);
+    const directionToTarget = targetPosLocal.clone().sub(spaceShip.position).normalize();
+    const angleToTarget = shipForward.angleTo(directionToTarget);
+
+    if (angleToTarget < THREE.MathUtils.degToRad(15)) {
+        shipThrottleCommand = 1.0; // Cruise throttle when aligned.
+    } else {
+        shipThrottleCommand = 0.3; // Lower throttle while turning.
+    }
 }
 
 function updateSpaceShipControl(dt) {
@@ -1977,37 +2083,46 @@ function updateSpaceShipControl(dt) {
         return;
     }
 
-    const speedBeforeTurn = shipVelocity.length();
-    const speedRatioBeforeTurn = THREE.MathUtils.clamp(speedBeforeTurn / shipMaxSpeed, 0, 1);
-    const turnAuthority = THREE.MathUtils.lerp(
-        1,
-        shipHighSpeedTurnAuthorityMin,
-        speedRatioBeforeTurn * speedRatioBeforeTurn
-    );
+    if (shipAutopilotActive) {
+        updateShipAutopilot(dt);
+    } else {
+        // Standard player flight controls.
+        const speedBeforeTurn = shipVelocity.length();
+        const speedRatioBeforeTurn = THREE.MathUtils.clamp(speedBeforeTurn / shipMaxSpeed, 0, 1);
+        const turnAuthority = THREE.MathUtils.lerp(
+            1,
+            shipHighSpeedTurnAuthorityMin,
+            speedRatioBeforeTurn * speedRatioBeforeTurn
+        );
 
-    if (shipPendingYaw || shipPendingPitch) {
-        shipAngularVelocity.x += shipPendingYaw * shipTurnImpulseGain;
-        shipAngularVelocity.y += shipPendingPitch * shipTurnImpulseGain;
-        shipPendingYaw = 0;
-        shipPendingPitch = 0;
+        if (shipPendingYaw || shipPendingPitch) {
+            shipAngularVelocity.x += shipPendingYaw * shipTurnImpulseGain;
+            shipAngularVelocity.y += shipPendingPitch * shipTurnImpulseGain;
+            shipPendingYaw = 0;
+            shipPendingPitch = 0;
+        }
+        shipAngularVelocity.multiplyScalar(Math.exp(-shipTurnDampingPerSecond * dt));
+        shipAngularVelocity.x = THREE.MathUtils.clamp(shipAngularVelocity.x, -shipMaxTurnRate, shipMaxTurnRate);
+        shipAngularVelocity.y = THREE.MathUtils.clamp(shipAngularVelocity.y, -shipMaxTurnRate, shipMaxTurnRate);
+        if (shipAngularVelocity.x !== 0) {
+            spaceShip.rotateY(shipAngularVelocity.x * turnAuthority * dt);
+        }
+        if (shipAngularVelocity.y !== 0) {
+            spaceShip.rotateX(shipAngularVelocity.y * turnAuthority * dt);
+        }
     }
-    shipAngularVelocity.multiplyScalar(Math.exp(-shipTurnDampingPerSecond * dt));
-    shipAngularVelocity.x = THREE.MathUtils.clamp(shipAngularVelocity.x, -shipMaxTurnRate, shipMaxTurnRate);
-    shipAngularVelocity.y = THREE.MathUtils.clamp(shipAngularVelocity.y, -shipMaxTurnRate, shipMaxTurnRate);
-    if (shipAngularVelocity.x !== 0) {
-        spaceShip.rotateY(shipAngularVelocity.x * turnAuthority * dt);
-    }
-    if (shipAngularVelocity.y !== 0) {
-        spaceShip.rotateX(shipAngularVelocity.y * turnAuthority * dt);
-    }
-
     shipForwardWorld.copy(shipForwardAxis).applyQuaternion(spaceShip.quaternion).normalize();
 
-    const thrustInput = shipThrottleCommand;
+    const thrustInput = shipAutopilotActive ? shipThrottleCommand : getEffectiveThrottle();
 
     if (thrustInput !== 0) {
+        let effectiveAcceleration = shipAcceleration;
+        if (thrustInput < 0) {
+            // Apply multiplier for reverse thrust
+            effectiveAcceleration *= shipReverseMultiplier;
+        }
         const boost = shipControlState.ShiftLeft ? shipBoostMultiplier : 1;
-        shipVelocity.addScaledVector(shipForwardWorld, shipAcceleration * boost * thrustInput * dt);
+        shipVelocity.addScaledVector(shipForwardWorld, effectiveAcceleration * boost * thrustInput * dt); // Thrust
     }
 
     const forwardSpeed = shipVelocity.dot(shipForwardWorld);
@@ -2018,11 +2133,8 @@ function updateSpaceShipControl(dt) {
     shipVelocityLateralComponent.multiplyScalar(Math.exp(-lateralDamping * dt));
     shipVelocity.copy(shipVelocityForwardComponent).add(shipVelocityLateralComponent);
 
-    const throttleMomentumDamp = (1 - shipThrottleCommand) * shipLowThrottleDragPerSecond;
-    const drag = shipControlState.Space
-        ? shipBrakeDragPerSecond
-        : shipDragPerSecond + throttleMomentumDamp;
-    shipVelocity.multiplyScalar(Math.exp(-drag * dt));
+    // Brakes are no longer tied to spacebar. Apply normal drag.
+    shipVelocity.multiplyScalar(Math.exp(-shipDragPerSecond * dt));
     if (shipVelocity.lengthSq() > shipMaxSpeed * shipMaxSpeed) {
         shipVelocity.setLength(shipMaxSpeed);
     }
@@ -2035,7 +2147,7 @@ function updateSpaceShipControl(dt) {
         return;
     }
 
-    updateShipEngineVisuals(dt, Math.min(1, thrustInput * (shipControlState.ShiftLeft ? 1 : 0.75)));
+    updateShipEngineVisuals(dt, Math.abs(thrustInput) * (shipControlState.ShiftLeft ? 1 : 0.75));
 }
 
 function updateSpaceShipCamera() {
@@ -2071,7 +2183,6 @@ function createHomeSphere() {
     scene.add(homeSphere);
     objects.push(homeSphere);
 
-    // Slightly softer falloff keeps Earth lit more comparably to closer orbiting objects.
     sunLight = new THREE.PointLight(0xfff1cc, 1200, 0, 1.2);
     sunLight.castShadow = false;
     homeSphere.add(sunLight);
@@ -2154,21 +2265,17 @@ function createPokeball() {
     const ring = new THREE.Mesh(ringGeom, blackMat);
     ring.rotation.x = 0;
 
-    // front button (placed on the sphere's face, not top)
     const buttonGeom = new THREE.CylinderGeometry(0.15, 0.15, 0.1, 32);
     const buttonMat = new THREE.MeshStandardMaterial({ color: 0xf7f7f7, roughness: 0.35, metalness: 0.0 });
     const button = new THREE.Mesh(buttonGeom, buttonMat);
     const buttonBorderGeom = new THREE.CylinderGeometry(0.24, 0.24, 0.11, 32);
     const buttonBorderMat = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.82, metalness: 0.0 });
     const buttonBorder = new THREE.Mesh(buttonBorderGeom, buttonBorderMat);
-    // position along z-axis outward by radius
     buttonBorder.position.set(0, 0, radius - 0.01);
     button.position.set(0, 0, radius + 0.01); 
-    // rotate so the button faces outward from the front of the pokeball
     button.rotation.x = Math.PI / 2;
     buttonBorder.rotation.x = Math.PI / 2;
     button.rotation.z = 0;
-    // group for easier raycasting
     pokeball = new THREE.Group();
     pokeball.add(top, bottom, ring, buttonBorder, button);
     pokeball.scale.setScalar(0.4);
@@ -2605,20 +2712,31 @@ document.addEventListener('keydown', (e) => {
     if (shipControlActive && /^Digit[0-9]$/.test(e.code)) {
         e.preventDefault();
         const digit = Number(e.code.slice(5));
-        shipThrottleCommand = digit === 0 ? 0 : digit * 0.1;
+        const direction = isReverseThrottleActive() ? -1 : 1;
+        if (digit === 0) {
+            shipThrottleCommand = 0;
+        } else {
+            shipThrottleCommand = direction * digit * 0.1;
+        }
         updateThrottleMeter();
         return;
     }
 
-    if (shipControlActive && e.code === 'KeyO') {
+    if (shipControlActive && e.code === 'KeyI') {
         e.preventDefault();
         selectMissileLoadout('short');
         return;
     }
 
-    if (shipControlActive && e.code === 'KeyP') {
+    if (shipControlActive && e.code === 'KeyO') {
         e.preventDefault();
         selectMissileLoadout('long');
+        return;
+    }
+
+    if (shipControlActive && e.code === 'KeyP') {
+        e.preventDefault();
+        selectMissileLoadout('homing');
         return;
     }
 
@@ -2628,26 +2746,6 @@ document.addEventListener('keydown', (e) => {
         if (!e.repeat) {
             fireShipMissile();
         }
-        return;
-    }
-
-    if (shipControlActive && (e.code === 'KeyW' || e.code === 'KeyS')) {
-        e.preventDefault();
-        if (!e.repeat) {
-            const step = e.shiftKey ? shipThrottleFineStep : shipThrottleStep;
-            if (e.code === 'KeyW') {
-                adjustManualThrottle(step);
-            } else {
-                adjustManualThrottle(-step);
-            }
-            updateThrottleMeter();
-        }
-        return;
-    }
-
-    if (shipControlActive && e.code in shipControlState) {
-        e.preventDefault();
-        shipControlState[e.code] = true;
         return;
     }
 
@@ -2682,13 +2780,32 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
+    if (shipControlActive && e.code === 'Space') {
+        e.preventDefault();
+        shipAutopilotActive = !shipAutopilotActive;
+        // When turning off autopilot, reset throttle to 0 to avoid surprise acceleration.
+        if (!shipAutopilotActive) {
+            shipThrottleCommand = 0;
+        }
+        return;
+    }
+
     if (freecamEnabled && e.code in freecamMoveState) {
         e.preventDefault();
         freecamMoveState[e.code] = true;
     }
+
+    if (shipControlActive && e.code in shipControlState) {
+        e.preventDefault();
+        shipControlState[e.code] = true;
+    }
 });
 
 document.addEventListener('keyup', (e) => {
+    if (e.code === 'KeyR') {
+        shipControlState[e.code] = false;
+        updateThrottleMeter();
+    }
     if (e.code === 'KeyM') {
         missileTriggerHeld = false;
     }
@@ -2788,6 +2905,7 @@ function updateSpaceflightSim(dt) {
     updateMissileInventoryUI();
     updateThrottleMeter();
     updateSpeedometer();
+    updateAutopilotIndicator();
 }
 
 
@@ -2802,6 +2920,7 @@ function animate(){
     updateSpaceflightSim(dt);
     // Spin at real-world rates using elapsed time in seconds.
     if(homeSphere){
+
         homeSphere.rotation.y += sunRotationRadPerSecond * dt;
     }
     if(pokeball){
